@@ -1,27 +1,3 @@
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -31,24 +7,19 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 var _a;
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.readFromFileOrURL = exports.readableFromFileOrURL = void 0;
-const fs = __importStar(require("fs"));
-const ts_necessities_1 = require("@glideapps/ts-necessities");
-const browser_or_node_1 = require("browser-or-node");
-const cross_fetch_1 = __importDefault(require("cross-fetch"));
-const is_url_1 = __importDefault(require("is-url"));
+import * as fs from "fs";
+import { defined, exceptionToString } from "@glideapps/ts-necessities";
+import { isNode } from "browser-or-node";
+import _fetch from "cross-fetch";
+import isURL from "is-url";
 // eslint-disable-next-line import/no-cycle
-const index_1 = require("../../index");
-const get_stream_1 = require("./get-stream");
+import { messageError, panic } from "../../index";
+import { getStream } from "./get-stream";
 // Only use cross-fetch in CI
 // FIXME: type global
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const fetch = process.env.CI ? cross_fetch_1.default : (_a = global.fetch) !== null && _a !== void 0 ? _a : cross_fetch_1.default;
+const fetch = process.env.CI ? _fetch : (_a = global.fetch) !== null && _a !== void 0 ? _a : _fetch;
 function parseHeaders(httpHeaders) {
     if (!Array.isArray(httpHeaders)) {
         return {};
@@ -57,7 +28,7 @@ function parseHeaders(httpHeaders) {
         if (httpHeader !== undefined && httpHeader.length > 0) {
             const split = httpHeader.indexOf(":");
             if (split < 0) {
-                return (0, index_1.panic)(`Could not parse HTTP header "${httpHeader}".`);
+                return panic(`Could not parse HTTP header "${httpHeader}".`);
             }
             const key = httpHeader.slice(0, split).trim();
             const value = httpHeader.slice(split + 1).trim();
@@ -66,16 +37,16 @@ function parseHeaders(httpHeaders) {
         return result;
     }, {});
 }
-function readableFromFileOrURL(fileOrURL, httpHeaders) {
+export function readableFromFileOrURL(fileOrURL, httpHeaders) {
     return __awaiter(this, void 0, void 0, function* () {
         try {
-            if ((0, is_url_1.default)(fileOrURL)) {
+            if (isURL(fileOrURL)) {
                 const response = yield fetch(fileOrURL, {
                     headers: parseHeaders(httpHeaders)
                 });
-                return (0, ts_necessities_1.defined)(response.body);
+                return defined(response.body);
             }
-            else if (browser_or_node_1.isNode) {
+            else if (isNode) {
                 if (fileOrURL === "-") {
                     // Cast node readable to isomorphic readable from readable-stream
                     return process.stdin;
@@ -88,21 +59,19 @@ function readableFromFileOrURL(fileOrURL, httpHeaders) {
             }
         }
         catch (e) {
-            return (0, index_1.messageError)("MiscReadError", { fileOrURL, message: (0, ts_necessities_1.exceptionToString)(e) });
+            return messageError("MiscReadError", { fileOrURL, message: exceptionToString(e) });
         }
-        return (0, index_1.messageError)("DriverInputFileDoesNotExist", { filename: fileOrURL });
+        return messageError("DriverInputFileDoesNotExist", { filename: fileOrURL });
     });
 }
-exports.readableFromFileOrURL = readableFromFileOrURL;
-function readFromFileOrURL(fileOrURL, httpHeaders) {
+export function readFromFileOrURL(fileOrURL, httpHeaders) {
     return __awaiter(this, void 0, void 0, function* () {
         const readable = yield readableFromFileOrURL(fileOrURL, httpHeaders);
         try {
-            return yield (0, get_stream_1.getStream)(readable);
+            return yield getStream(readable);
         }
         catch (e) {
-            return (0, index_1.messageError)("MiscReadError", { fileOrURL, message: (0, ts_necessities_1.exceptionToString)(e) });
+            return messageError("MiscReadError", { fileOrURL, message: exceptionToString(e) });
         }
     });
 }
-exports.readFromFileOrURL = readFromFileOrURL;

@@ -1,14 +1,11 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.CrystalRenderer = exports.CrystalTargetLanguage = void 0;
-const Annotation_1 = require("../Annotation");
-const ConvenienceRenderer_1 = require("../ConvenienceRenderer");
-const Naming_1 = require("../Naming");
-const Source_1 = require("../Source");
-const Strings_1 = require("../support/Strings");
-const TargetLanguage_1 = require("../TargetLanguage");
-const TypeUtils_1 = require("../TypeUtils");
-class CrystalTargetLanguage extends TargetLanguage_1.TargetLanguage {
+import { anyTypeIssueAnnotation, nullTypeIssueAnnotation } from "../Annotation";
+import { ConvenienceRenderer } from "../ConvenienceRenderer";
+import { funPrefixNamer } from "../Naming";
+import { maybeAnnotated } from "../Source";
+import { allLowerWordStyle, combineWords, escapeNonPrintableMapper, firstUpperWordStyle, intToHex, isAscii, isLetterOrUnderscore, isLetterOrUnderscoreOrDigit, isPrintable, legalizeCharacters, splitIntoWords, utf32ConcatMap } from "../support/Strings";
+import { TargetLanguage } from "../TargetLanguage";
+import { matchType, nullableFromUnion, removeNullFromUnion } from "../TypeUtils";
+export class CrystalTargetLanguage extends TargetLanguage {
     makeRenderer(renderContext) {
         return new CrystalRenderer(this, renderContext);
     }
@@ -22,7 +19,6 @@ class CrystalTargetLanguage extends TargetLanguage_1.TargetLanguage {
         return [];
     }
 }
-exports.CrystalTargetLanguage = CrystalTargetLanguage;
 const keywords = [
     "Any",
     "Array",
@@ -162,36 +158,36 @@ const keywords = [
     "yield"
 ];
 function isAsciiLetterOrUnderscoreOrDigit(codePoint) {
-    if (!(0, Strings_1.isAscii)(codePoint)) {
+    if (!isAscii(codePoint)) {
         return false;
     }
-    return (0, Strings_1.isLetterOrUnderscoreOrDigit)(codePoint);
+    return isLetterOrUnderscoreOrDigit(codePoint);
 }
 function isAsciiLetterOrUnderscore(codePoint) {
-    if (!(0, Strings_1.isAscii)(codePoint)) {
+    if (!isAscii(codePoint)) {
         return false;
     }
-    return (0, Strings_1.isLetterOrUnderscore)(codePoint);
+    return isLetterOrUnderscore(codePoint);
 }
-const legalizeName = (0, Strings_1.legalizeCharacters)(isAsciiLetterOrUnderscoreOrDigit);
+const legalizeName = legalizeCharacters(isAsciiLetterOrUnderscoreOrDigit);
 function crystalStyle(original, isSnakeCase) {
-    const words = (0, Strings_1.splitIntoWords)(original);
-    const wordStyle = isSnakeCase ? Strings_1.allLowerWordStyle : Strings_1.firstUpperWordStyle;
-    const combined = (0, Strings_1.combineWords)(words, legalizeName, wordStyle, wordStyle, wordStyle, wordStyle, isSnakeCase ? "_" : "", isAsciiLetterOrUnderscore);
+    const words = splitIntoWords(original);
+    const wordStyle = isSnakeCase ? allLowerWordStyle : firstUpperWordStyle;
+    const combined = combineWords(words, legalizeName, wordStyle, wordStyle, wordStyle, wordStyle, isSnakeCase ? "_" : "", isAsciiLetterOrUnderscore);
     return combined === "_" ? "_underscore" : combined;
 }
-const snakeNamingFunction = (0, Naming_1.funPrefixNamer)("default", (original) => crystalStyle(original, true));
-const camelNamingFunction = (0, Naming_1.funPrefixNamer)("camel", (original) => crystalStyle(original, false));
+const snakeNamingFunction = funPrefixNamer("default", (original) => crystalStyle(original, true));
+const camelNamingFunction = funPrefixNamer("camel", (original) => crystalStyle(original, false));
 function standardUnicodeCrystalEscape(codePoint) {
     if (codePoint <= 0xffff) {
-        return "\\u{" + (0, Strings_1.intToHex)(codePoint, 4) + "}";
+        return "\\u{" + intToHex(codePoint, 4) + "}";
     }
     else {
-        return "\\u{" + (0, Strings_1.intToHex)(codePoint, 6) + "}";
+        return "\\u{" + intToHex(codePoint, 6) + "}";
     }
 }
-const crystalStringEscape = (0, Strings_1.utf32ConcatMap)((0, Strings_1.escapeNonPrintableMapper)(Strings_1.isPrintable, standardUnicodeCrystalEscape));
-class CrystalRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
+const crystalStringEscape = utf32ConcatMap(escapeNonPrintableMapper(isPrintable, standardUnicodeCrystalEscape));
+export class CrystalRenderer extends ConvenienceRenderer {
     constructor(targetLanguage, renderContext) {
         super(targetLanguage, renderContext);
     }
@@ -230,11 +226,11 @@ class CrystalRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return kind === "array" || kind === "map";
     }
     crystalType(t, withIssues = false) {
-        return (0, TypeUtils_1.matchType)(t, _anyType => (0, Source_1.maybeAnnotated)(withIssues, Annotation_1.anyTypeIssueAnnotation, "JSON::Any?"), _nullType => (0, Source_1.maybeAnnotated)(withIssues, Annotation_1.nullTypeIssueAnnotation, "Nil"), _boolType => "Bool", _integerType => "Int32", _doubleType => "Float64", _stringType => "String", arrayType => ["Array(", this.crystalType(arrayType.items, withIssues), ")"], classType => this.nameForNamedType(classType), mapType => ["Hash(String, ", this.crystalType(mapType.values, withIssues), ")"], _enumType => "String", unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+        return matchType(t, _anyType => maybeAnnotated(withIssues, anyTypeIssueAnnotation, "JSON::Any?"), _nullType => maybeAnnotated(withIssues, nullTypeIssueAnnotation, "Nil"), _boolType => "Bool", _integerType => "Int32", _doubleType => "Float64", _stringType => "String", arrayType => ["Array(", this.crystalType(arrayType.items, withIssues), ")"], classType => this.nameForNamedType(classType), mapType => ["Hash(String, ", this.crystalType(mapType.values, withIssues), ")"], _enumType => "String", unionType => {
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null)
                 return this.nullableCrystalType(nullable, withIssues);
-            const [hasNull] = (0, TypeUtils_1.removeNullFromUnion)(unionType);
+            const [hasNull] = removeNullFromUnion(unionType);
             const name = this.nameForNamedType(unionType);
             return hasNull !== null ? [name, "?"] : name;
         });
@@ -274,12 +270,12 @@ class CrystalRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         this.emitLine("end");
     }
     emitUnion(u, unionName) {
-        const isMaybeWithSingleType = (0, TypeUtils_1.nullableFromUnion)(u);
+        const isMaybeWithSingleType = nullableFromUnion(u);
         if (isMaybeWithSingleType !== null) {
             return;
         }
         this.emitDescription(this.descriptionForType(u));
-        const [, nonNulls] = (0, TypeUtils_1.removeNullFromUnion)(u);
+        const [, nonNulls] = removeNullFromUnion(u);
         let types = [];
         this.forEachUnionMember(u, nonNulls, "none", null, (_name, t) => {
             const crystalType = this.breakCycle(t, true);
@@ -310,4 +306,3 @@ class CrystalRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         this.forEachUnion("leading-and-interposing", (u, name) => this.emitUnion(u, name));
     }
 }
-exports.CrystalRenderer = CrystalRenderer;

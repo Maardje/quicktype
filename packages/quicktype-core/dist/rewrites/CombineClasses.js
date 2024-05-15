@@ -1,16 +1,13 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.combineClasses = void 0;
-const Support_1 = require("../support/Support");
-const Type_1 = require("../Type");
-const TypeUtils_1 = require("../TypeUtils");
-const UnifyClasses_1 = require("../UnifyClasses");
+import { assert, panic } from "../support/Support";
+import { ClassType, setOperationCasesEqual } from "../Type";
+import { combineTypeAttributesOfTypes, nonNullTypeCases } from "../TypeUtils";
+import { unifyTypes, unionBuilderForUnification } from "../UnifyClasses";
 const REQUIRED_OVERLAP = 3 / 4;
 // FIXME: Allow some type combinations to unify, like different enums,
 // enums with strings, integers with doubles, maps with objects of
 // the correct type.
 function typeSetsCanBeCombined(s1, s2) {
-    return (0, Type_1.setOperationCasesEqual)(s1, s2, true, (a, b) => a.structurallyCompatible(b, true));
+    return setOperationCasesEqual(s1, s2, true, (a, b) => a.structurallyCompatible(b, true));
 }
 function canBeCombined(c1, c2, onlyWithSameProperties) {
     const p1 = c1.getProperties();
@@ -43,7 +40,7 @@ function canBeCombined(c1, c2, onlyWithSameProperties) {
         const minOverlap = Math.ceil(larger.size * REQUIRED_OVERLAP);
         maxFaults = smaller.size - minOverlap;
     }
-    (0, Support_1.assert)(maxFaults >= 0, "Max faults negative");
+    assert(maxFaults >= 0, "Max faults negative");
     const commonProperties = [];
     let faults = 0;
     for (const [name] of smaller) {
@@ -62,10 +59,10 @@ function canBeCombined(c1, c2, onlyWithSameProperties) {
         let ts = smaller.get(name);
         let tl = larger.get(name);
         if (ts === undefined || tl === undefined) {
-            return (0, Support_1.panic)(`Both classes should have property ${name}`);
+            return panic(`Both classes should have property ${name}`);
         }
-        const tsCases = (0, TypeUtils_1.nonNullTypeCases)(ts.type);
-        const tlCases = (0, TypeUtils_1.nonNullTypeCases)(tl.type);
+        const tsCases = nonNullTypeCases(ts.type);
+        const tlCases = nonNullTypeCases(tl.type);
         if (tsCases.size > 0 && tlCases.size > 0 && !typeSetsCanBeCombined(tsCases, tlCases)) {
             return false;
         }
@@ -89,7 +86,7 @@ function tryAddToClique(c, clique, onlyWithSameProperties) {
     return false;
 }
 function findSimilarityCliques(graph, onlyWithSameProperties, includeFixedClasses) {
-    const classCandidates = Array.from(graph.allNamedTypesSeparated().objects).filter(o => o instanceof Type_1.ClassType && (includeFixedClasses || !o.isFixed));
+    const classCandidates = Array.from(graph.allNamedTypesSeparated().objects).filter(o => o instanceof ClassType && (includeFixedClasses || !o.isFixed));
     const cliques = [];
     for (const c of classCandidates) {
         let cliqueIndex = undefined;
@@ -113,13 +110,12 @@ function findSimilarityCliques(graph, onlyWithSameProperties, includeFixedClasse
     }
     return cliques.map(clique => clique.members).filter(cl => cl.length > 1);
 }
-function combineClasses(ctx, graph, alphabetizeProperties, conflateNumbers, onlyWithSameProperties, debugPrintReconstitution) {
+export function combineClasses(ctx, graph, alphabetizeProperties, conflateNumbers, onlyWithSameProperties, debugPrintReconstitution) {
     const cliques = ctx.time("  find similarity cliques", () => findSimilarityCliques(graph, onlyWithSameProperties, false));
     function makeCliqueClass(clique, builder, forwardingRef) {
-        (0, Support_1.assert)(clique.size > 0, "Clique can't be empty");
-        const attributes = (0, TypeUtils_1.combineTypeAttributesOfTypes)("union", clique);
-        return (0, UnifyClasses_1.unifyTypes)(clique, attributes, builder, (0, UnifyClasses_1.unionBuilderForUnification)(builder, false, false, conflateNumbers), conflateNumbers, forwardingRef);
+        assert(clique.size > 0, "Clique can't be empty");
+        const attributes = combineTypeAttributesOfTypes("union", clique);
+        return unifyTypes(clique, attributes, builder, unionBuilderForUnification(builder, false, false, conflateNumbers), conflateNumbers, forwardingRef);
     }
     return graph.rewrite("combine classes", ctx.stringTypeMapping, alphabetizeProperties, cliques, debugPrintReconstitution, makeCliqueClass);
 }
-exports.combineClasses = combineClasses;

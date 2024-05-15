@@ -1,45 +1,42 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.RustRenderer = exports.RustTargetLanguage = exports.rustOptions = exports.Visibility = exports.Density = void 0;
 /* eslint-disable @typescript-eslint/naming-convention */
-const collection_utils_1 = require("collection-utils");
-const Annotation_1 = require("../Annotation");
-const ConvenienceRenderer_1 = require("../ConvenienceRenderer");
-const Naming_1 = require("../Naming");
-const RendererOptions_1 = require("../RendererOptions");
-const Source_1 = require("../Source");
-const Strings_1 = require("../support/Strings");
-const Support_1 = require("../support/Support");
-const TargetLanguage_1 = require("../TargetLanguage");
-const Type_1 = require("../Type");
-const TypeUtils_1 = require("../TypeUtils");
-var Density;
+import { mapFirst } from "collection-utils";
+import { anyTypeIssueAnnotation, nullTypeIssueAnnotation } from "../Annotation";
+import { ConvenienceRenderer } from "../ConvenienceRenderer";
+import { funPrefixNamer } from "../Naming";
+import { BooleanOption, EnumOption, getOptionValues } from "../RendererOptions";
+import { maybeAnnotated } from "../Source";
+import { allLowerWordStyle, combineWords, escapeNonPrintableMapper, firstUpperWordStyle, intToHex, isAscii, isLetterOrUnderscore, isLetterOrUnderscoreOrDigit, isPrintable, legalizeCharacters, splitIntoWords, utf32ConcatMap } from "../support/Strings";
+import { defined } from "../support/Support";
+import { TargetLanguage } from "../TargetLanguage";
+import { UnionType } from "../Type";
+import { matchType, nullableFromUnion, removeNullFromUnion } from "../TypeUtils";
+export var Density;
 (function (Density) {
     Density["Normal"] = "Normal";
     Density["Dense"] = "Dense";
-})(Density = exports.Density || (exports.Density = {}));
-var Visibility;
+})(Density || (Density = {}));
+export var Visibility;
 (function (Visibility) {
     Visibility["Private"] = "Private";
     Visibility["Crate"] = "Crate";
     Visibility["Public"] = "Public";
-})(Visibility = exports.Visibility || (exports.Visibility = {}));
-exports.rustOptions = {
-    density: new RendererOptions_1.EnumOption("density", "Density", [
+})(Visibility || (Visibility = {}));
+export const rustOptions = {
+    density: new EnumOption("density", "Density", [
         ["normal", Density.Normal],
         ["dense", Density.Dense]
     ]),
-    visibility: new RendererOptions_1.EnumOption("visibility", "Field visibility", [
+    visibility: new EnumOption("visibility", "Field visibility", [
         ["private", Visibility.Private],
         ["crate", Visibility.Crate],
         ["public", Visibility.Public]
     ]),
-    deriveDebug: new RendererOptions_1.BooleanOption("derive-debug", "Derive Debug impl", false),
-    deriveClone: new RendererOptions_1.BooleanOption("derive-clone", "Derive Clone impl", false),
-    derivePartialEq: new RendererOptions_1.BooleanOption("derive-partial-eq", "Derive PartialEq impl", false),
-    skipSerializingNone: new RendererOptions_1.BooleanOption("skip-serializing-none", "Skip serializing empty Option fields", false),
-    edition2018: new RendererOptions_1.BooleanOption("edition-2018", "Edition 2018", true),
-    leadingComments: new RendererOptions_1.BooleanOption("leading-comments", "Leading Comments", true)
+    deriveDebug: new BooleanOption("derive-debug", "Derive Debug impl", false),
+    deriveClone: new BooleanOption("derive-clone", "Derive Clone impl", false),
+    derivePartialEq: new BooleanOption("derive-partial-eq", "Derive PartialEq impl", false),
+    skipSerializingNone: new BooleanOption("skip-serializing-none", "Skip serializing empty Option fields", false),
+    edition2018: new BooleanOption("edition-2018", "Edition 2018", true),
+    leadingComments: new BooleanOption("leading-comments", "Leading Comments", true)
 };
 const namingStyles = {
     snake_case: {
@@ -85,27 +82,26 @@ const namingStyles = {
         fromParts: (parts) => parts.map(p => p.toUpperCase()).join("")
     }
 };
-class RustTargetLanguage extends TargetLanguage_1.TargetLanguage {
+export class RustTargetLanguage extends TargetLanguage {
     makeRenderer(renderContext, untypedOptionValues) {
-        return new RustRenderer(this, renderContext, (0, RendererOptions_1.getOptionValues)(exports.rustOptions, untypedOptionValues));
+        return new RustRenderer(this, renderContext, getOptionValues(rustOptions, untypedOptionValues));
     }
     constructor() {
         super("Rust", ["rust", "rs", "rustlang"], "rs");
     }
     getOptions() {
         return [
-            exports.rustOptions.density,
-            exports.rustOptions.visibility,
-            exports.rustOptions.deriveDebug,
-            exports.rustOptions.deriveClone,
-            exports.rustOptions.derivePartialEq,
-            exports.rustOptions.edition2018,
-            exports.rustOptions.leadingComments,
-            exports.rustOptions.skipSerializingNone
+            rustOptions.density,
+            rustOptions.visibility,
+            rustOptions.deriveDebug,
+            rustOptions.deriveClone,
+            rustOptions.derivePartialEq,
+            rustOptions.edition2018,
+            rustOptions.leadingComments,
+            rustOptions.skipSerializingNone
         ];
     }
 }
-exports.RustTargetLanguage = RustTargetLanguage;
 const keywords = [
     "Serialize",
     "Deserialize",
@@ -178,36 +174,36 @@ const keywords = [
     "option"
 ];
 const isAsciiLetterOrUnderscoreOrDigit = (codePoint) => {
-    if (!(0, Strings_1.isAscii)(codePoint)) {
+    if (!isAscii(codePoint)) {
         return false;
     }
-    return (0, Strings_1.isLetterOrUnderscoreOrDigit)(codePoint);
+    return isLetterOrUnderscoreOrDigit(codePoint);
 };
 const isAsciiLetterOrUnderscore = (codePoint) => {
-    if (!(0, Strings_1.isAscii)(codePoint)) {
+    if (!isAscii(codePoint)) {
         return false;
     }
-    return (0, Strings_1.isLetterOrUnderscore)(codePoint);
+    return isLetterOrUnderscore(codePoint);
 };
-const legalizeName = (0, Strings_1.legalizeCharacters)(isAsciiLetterOrUnderscoreOrDigit);
+const legalizeName = legalizeCharacters(isAsciiLetterOrUnderscoreOrDigit);
 function rustStyle(original, isSnakeCase) {
-    const words = (0, Strings_1.splitIntoWords)(original);
-    const wordStyle = isSnakeCase ? Strings_1.allLowerWordStyle : Strings_1.firstUpperWordStyle;
-    const combined = (0, Strings_1.combineWords)(words, legalizeName, wordStyle, wordStyle, wordStyle, wordStyle, isSnakeCase ? "_" : "", isAsciiLetterOrUnderscore);
+    const words = splitIntoWords(original);
+    const wordStyle = isSnakeCase ? allLowerWordStyle : firstUpperWordStyle;
+    const combined = combineWords(words, legalizeName, wordStyle, wordStyle, wordStyle, wordStyle, isSnakeCase ? "_" : "", isAsciiLetterOrUnderscore);
     return combined === "_" ? "_underscore" : combined;
 }
-const snakeNamingFunction = (0, Naming_1.funPrefixNamer)("default", (original) => rustStyle(original, true));
-const camelNamingFunction = (0, Naming_1.funPrefixNamer)("camel", (original) => rustStyle(original, false));
+const snakeNamingFunction = funPrefixNamer("default", (original) => rustStyle(original, true));
+const camelNamingFunction = funPrefixNamer("camel", (original) => rustStyle(original, false));
 const standardUnicodeRustEscape = (codePoint) => {
     if (codePoint <= 0xffff) {
-        return "\\u{" + (0, Strings_1.intToHex)(codePoint, 4) + "}";
+        return "\\u{" + intToHex(codePoint, 4) + "}";
     }
     else {
-        return "\\u{" + (0, Strings_1.intToHex)(codePoint, 6) + "}";
+        return "\\u{" + intToHex(codePoint, 6) + "}";
     }
 };
-const rustStringEscape = (0, Strings_1.utf32ConcatMap)((0, Strings_1.escapeNonPrintableMapper)(Strings_1.isPrintable, standardUnicodeRustEscape));
-class RustRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
+const rustStringEscape = utf32ConcatMap(escapeNonPrintableMapper(isPrintable, standardUnicodeRustEscape));
+export class RustRenderer extends ConvenienceRenderer {
     constructor(targetLanguage, renderContext, _options) {
         super(targetLanguage, renderContext);
         this._options = _options;
@@ -247,11 +243,11 @@ class RustRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return kind === "array" || kind === "map";
     }
     rustType(t, withIssues = false) {
-        return (0, TypeUtils_1.matchType)(t, _anyType => (0, Source_1.maybeAnnotated)(withIssues, Annotation_1.anyTypeIssueAnnotation, "Option<serde_json::Value>"), _nullType => (0, Source_1.maybeAnnotated)(withIssues, Annotation_1.nullTypeIssueAnnotation, "Option<serde_json::Value>"), _boolType => "bool", _integerType => "i64", _doubleType => "f64", _stringType => "String", arrayType => ["Vec<", this.rustType(arrayType.items, withIssues), ">"], classType => this.nameForNamedType(classType), mapType => ["HashMap<String, ", this.rustType(mapType.values, withIssues), ">"], enumType => this.nameForNamedType(enumType), unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+        return matchType(t, _anyType => maybeAnnotated(withIssues, anyTypeIssueAnnotation, "Option<serde_json::Value>"), _nullType => maybeAnnotated(withIssues, nullTypeIssueAnnotation, "Option<serde_json::Value>"), _boolType => "bool", _integerType => "i64", _doubleType => "f64", _stringType => "String", arrayType => ["Vec<", this.rustType(arrayType.items, withIssues), ">"], classType => this.nameForNamedType(classType), mapType => ["HashMap<String, ", this.rustType(mapType.values, withIssues), ">"], enumType => this.nameForNamedType(enumType), unionType => {
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null)
                 return this.nullableRustType(nullable, withIssues);
-            const [hasNull] = (0, TypeUtils_1.removeNullFromUnion)(unionType);
+            const [hasNull] = removeNullFromUnion(unionType);
             const isCycleBreaker = this.isCycleBreakerType(unionType);
             const name = isCycleBreaker
                 ? ["Box<", this.nameForNamedType(unionType), ">"]
@@ -274,8 +270,8 @@ class RustRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         }
     }
     emitSkipSerializeNone(t) {
-        if (t instanceof Type_1.UnionType) {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(t);
+        if (t instanceof UnionType) {
+            const nullable = nullableFromUnion(t);
             if (nullable !== null)
                 this.emitLine('#[serde(skip_serializing_if = "Option::is_none")]');
         }
@@ -320,14 +316,14 @@ class RustRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         this.emitLine("}");
     }
     emitUnion(u, unionName) {
-        const isMaybeWithSingleType = (0, TypeUtils_1.nullableFromUnion)(u);
+        const isMaybeWithSingleType = nullableFromUnion(u);
         if (isMaybeWithSingleType !== null) {
             return;
         }
         this.emitDescription(this.descriptionForType(u));
         this.emitLine("#[derive(", this._options.deriveDebug ? "Debug, " : "", this._options.deriveClone ? "Clone, " : "", this._options.derivePartialEq ? "PartialEq, " : "", "Serialize, Deserialize)]");
         this.emitLine("#[serde(untagged)]");
-        const [, nonNulls] = (0, TypeUtils_1.removeNullFromUnion)(u);
+        const [, nonNulls] = removeNullFromUnion(u);
         const blankLines = this._options.density === Density.Dense ? "none" : "interposing";
         this.emitBlock(["pub enum ", unionName], () => this.forEachUnionMember(u, nonNulls, blankLines, null, (fieldName, t) => {
             const rustType = this.breakCycle(t, true);
@@ -362,7 +358,7 @@ class RustRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             this.emitComments(this.leadingComments);
             return;
         }
-        const topLevelName = (0, Support_1.defined)((0, collection_utils_1.mapFirst)(this.topLevels)).getCombinedName();
+        const topLevelName = defined(mapFirst(this.topLevels)).getCombinedName();
         this.emitMultiline(`// Example code that deserializes and serializes the model.
 // extern crate serde;
 // #[macro_use]
@@ -394,7 +390,6 @@ class RustRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         this.forEachNamedType("leading-and-interposing", (c, name) => this.emitStructDefinition(c, name), (e, name) => this.emitEnumDefinition(e, name), (u, name) => this.emitUnion(u, name));
     }
 }
-exports.RustRenderer = RustRenderer;
 function getPreferedNamingStyle(namingStyleOccurences, defaultStyle) {
     const occurrences = Object.fromEntries(Object.keys(namingStyles).map(key => [key, 0]));
     namingStyleOccurences.forEach(style => ++occurrences[style]);

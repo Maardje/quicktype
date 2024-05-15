@@ -1,7 +1,4 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.reservedProperties = exports.globals = exports.keywords = void 0;
-exports.keywords = [
+export const keywords = [
     "__ENCODING__",
     "__FILE__",
     "__LINE__",
@@ -289,8 +286,8 @@ const kernel = [
     "untrusted?",
     "warn",
 ];
-exports.globals = kernel.concat(globalClasses);
-exports.reservedProperties = [
+export const globals = kernel.concat(globalClasses);
+export const reservedProperties = [
     "__id__",
     "__send__",
     "break",

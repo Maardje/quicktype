@@ -1,19 +1,16 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.EnumOption = exports.StringOption = exports.BooleanOption = exports.getOptionValues = exports.Option = void 0;
 // eslint-disable-next-line @typescript-eslint/no-redeclare
-const collection_utils_1 = require("collection-utils");
-const Messages_1 = require("./Messages");
-const Support_1 = require("./support/Support");
+import { hasOwnProperty } from "collection-utils";
+import { messageError } from "./Messages";
+import { assert } from "./support/Support";
 /**
  * The superclass for target language options.  You probably want to use one of its
  * subclasses, `BooleanOption`, `EnumOption`, or `StringOption`.
  */
-class Option {
+export class Option {
     constructor(definition) {
         definition.renderer = true;
         this.definition = definition;
-        (0, Support_1.assert)(definition.kind !== undefined, "Renderer option kind must be defined");
+        assert(definition.kind !== undefined, "Renderer option kind must be defined");
     }
     getValue(values) {
         const value = values[this.definition.name];
@@ -26,19 +23,17 @@ class Option {
         return { actual: [this.definition], display: [this.definition] };
     }
 }
-exports.Option = Option;
-function getOptionValues(options, untypedOptionValues) {
+export function getOptionValues(options, untypedOptionValues) {
     const optionValues = {};
     for (const name of Object.getOwnPropertyNames(options)) {
         optionValues[name] = options[name].getValue(untypedOptionValues);
     }
     return optionValues;
 }
-exports.getOptionValues = getOptionValues;
 /**
  * A target language option that allows setting a boolean flag.
  */
-class BooleanOption extends Option {
+export class BooleanOption extends Option {
     /**
      * @param name The shorthand name.
      * @param description Short-ish description of the option.
@@ -91,8 +86,7 @@ class BooleanOption extends Option {
         }
     }
 }
-exports.BooleanOption = BooleanOption;
-class StringOption extends Option {
+export class StringOption extends Option {
     constructor(name, description, typeLabel, defaultValue, kind = "primary") {
         const definition = {
             name,
@@ -105,8 +99,7 @@ class StringOption extends Option {
         super(definition);
     }
 }
-exports.StringOption = StringOption;
-class EnumOption extends Option {
+export class EnumOption extends Option {
     constructor(name, description, values, defaultValue = undefined, kind = "primary") {
         if (defaultValue === undefined) {
             defaultValue = values[0][0];
@@ -131,10 +124,9 @@ class EnumOption extends Option {
         if (name === undefined) {
             name = this.definition.defaultValue;
         }
-        if (!(0, collection_utils_1.hasOwnProperty)(this._values, name)) {
-            return (0, Messages_1.messageError)("RendererUnknownOptionValue", { value: name, name: this.definition.name });
+        if (!hasOwnProperty(this._values, name)) {
+            return messageError("RendererUnknownOptionValue", { value: name, name: this.definition.name });
         }
         return this._values[name];
     }
 }
-exports.EnumOption = EnumOption;

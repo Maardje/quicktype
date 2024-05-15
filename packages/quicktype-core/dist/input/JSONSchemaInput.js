@@ -1,4 +1,3 @@
-"use strict";
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -8,35 +7,32 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.JSONSchemaInput = exports.schemaTypeDict = exports.Ref = exports.PathElementKind = void 0;
-const collection_utils_1 = require("collection-utils");
-const urijs_1 = __importDefault(require("urijs"));
-const AccessorNames_1 = require("../attributes/AccessorNames");
-const Constraints_1 = require("../attributes/Constraints");
+import { EqualityMap, addHashCode, arrayGetFromEnd, arrayLast, arrayMapSync, definedMap, 
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+hasOwnProperty, hashCodeOf, hashString, iterableFind, iterableFirst, mapFromIterable, mapFromObject, mapMap, mapMapSync, mapMergeInto, mapSortBy, setFilter, setSubtract } from "collection-utils";
+import URI from "urijs";
+import { accessorNamesAttributeProducer } from "../attributes/AccessorNames";
+import { minMaxAttributeProducer, minMaxLengthAttributeProducer, patternAttributeProducer } from "../attributes/Constraints";
 // eslint-disable-next-line import/no-cycle
-const Description_1 = require("../attributes/Description");
-const EnumValues_1 = require("../attributes/EnumValues");
-const StringTypes_1 = require("../attributes/StringTypes");
-const TypeAttributes_1 = require("../attributes/TypeAttributes");
-const TypeNames_1 = require("../attributes/TypeNames");
-const URIAttributes_1 = require("../attributes/URIAttributes");
-const Messages_1 = require("../Messages");
-const Support_1 = require("../support/Support");
-const Type_1 = require("../Type");
-const JSONSchemaStore_1 = require("./JSONSchemaStore");
+import { descriptionAttributeProducer } from "../attributes/Description";
+import { enumValuesAttributeProducer } from "../attributes/EnumValues";
+import { StringTypes } from "../attributes/StringTypes";
+import { combineTypeAttributes, emptyTypeAttributes, makeTypeAttributesInferred } from "../attributes/TypeAttributes";
+import { TypeNames, makeNamesTypeAttributes, modifyTypeNames, singularizeTypeNames } from "../attributes/TypeNames";
+import { uriSchemaAttributesProducer } from "../attributes/URIAttributes";
+import { messageAssert, messageError } from "../Messages";
+import { assert, assertNever, defined, panic, parseJSON } from "../support/Support";
+import { isNumberTypeKind, transformedStringTypeTargetTypeKindsMap } from "../Type";
+import { JSONSchemaStore } from "./JSONSchemaStore";
 // There's a cyclic import here. Ignoring now because it requires a large refactor.
 // skipcq: JS-E1008
-var PathElementKind;
+export var PathElementKind;
 (function (PathElementKind) {
     PathElementKind[PathElementKind["Root"] = 1] = "Root";
     PathElementKind[PathElementKind["KeyOrIndex"] = 2] = "KeyOrIndex";
     PathElementKind[PathElementKind["Type"] = 3] = "Type";
     PathElementKind[PathElementKind["Object"] = 4] = "Object";
-})(PathElementKind = exports.PathElementKind || (exports.PathElementKind = {}));
+})(PathElementKind || (PathElementKind = {}));
 function keyOrIndex(pe) {
     if (pe.kind !== PathElementKind.KeyOrIndex)
         return undefined;
@@ -59,13 +55,13 @@ function withRef(refOrLoc, props) {
 }
 function checkJSONSchemaObject(x, refOrLoc) {
     if (Array.isArray(x)) {
-        return (0, Messages_1.messageError)("SchemaArrayIsInvalidSchema", withRef(refOrLoc));
+        return messageError("SchemaArrayIsInvalidSchema", withRef(refOrLoc));
     }
     if (x === null) {
-        return (0, Messages_1.messageError)("SchemaNullIsInvalidSchema", withRef(refOrLoc));
+        return messageError("SchemaNullIsInvalidSchema", withRef(refOrLoc));
     }
     if (typeof x !== "object") {
-        return (0, Messages_1.messageError)("SchemaInvalidJSONSchemaType", withRef(refOrLoc, { type: typeof x }));
+        return messageError("SchemaInvalidJSONSchemaType", withRef(refOrLoc, { type: typeof x }));
     }
     return x;
 }
@@ -82,13 +78,13 @@ function normalizeURI(uri) {
     // JSONSchemaStore should take a URI, not a string, and if it reads from
     // a file it can decode by itself.
     if (typeof uri === "string") {
-        uri = new urijs_1.default(uri);
+        uri = new URI(uri);
     }
-    return new urijs_1.default(urijs_1.default.decode(uri.clone().normalize().toString()));
+    return new URI(URI.decode(uri.clone().normalize().toString()));
 }
-class Ref {
+export class Ref {
     static root(address) {
-        const uri = (0, collection_utils_1.definedMap)(address, a => new urijs_1.default(a));
+        const uri = definedMap(address, a => new URI(a));
         return new Ref(uri, []);
     }
     static parsePath(path) {
@@ -116,12 +112,12 @@ class Ref {
         return new Ref(uri, elements);
     }
     static parse(ref) {
-        return Ref.parseURI(new urijs_1.default(ref), true);
+        return Ref.parseURI(new URI(ref), true);
     }
     constructor(addressURI, path) {
         this.path = path;
         if (addressURI !== undefined) {
-            (0, Support_1.assert)(addressURI.fragment() === "", `Ref URI with fragment is not allowed: ${addressURI.toString()}`);
+            assert(addressURI.fragment() === "", `Ref URI with fragment is not allowed: ${addressURI.toString()}`);
             this.addressURI = normalizeURI(addressURI);
         }
         else {
@@ -132,7 +128,7 @@ class Ref {
         return this.addressURI !== undefined;
     }
     get address() {
-        return (0, Support_1.defined)(this.addressURI).toString();
+        return defined(this.addressURI).toString();
     }
     get isRoot() {
         return this.path.length === 1 && this.path[0].kind === PathElementKind.Root;
@@ -186,18 +182,18 @@ class Ref {
                     break;
                 case PathElementKind.Type:
                 case PathElementKind.Object:
-                    return (0, Support_1.panic)("We shouldn't try to get the name of Type or Object refs");
+                    return panic("We shouldn't try to get the name of Type or Object refs");
                 default:
-                    return (0, Support_1.assertNever)(e);
+                    return assertNever(e);
             }
         }
     }
     get definitionName() {
-        const pe = (0, collection_utils_1.arrayGetFromEnd)(this.path, 2);
+        const pe = arrayGetFromEnd(this.path, 2);
         if (pe === undefined)
             return undefined;
         if (keyOrIndex(pe) === "definitions")
-            return keyOrIndex((0, Support_1.defined)((0, collection_utils_1.arrayLast)(this.path)));
+            return keyOrIndex(defined(arrayLast(this.path)));
         return undefined;
     }
     toString() {
@@ -212,7 +208,7 @@ class Ref {
                 case PathElementKind.KeyOrIndex:
                     return e.key;
                 default:
-                    return (0, Support_1.assertNever)(e);
+                    return assertNever(e);
             }
         }
         const address = this.addressURI === undefined ? "" : this.addressURI.toString();
@@ -232,26 +228,26 @@ class Ref {
                 const key = first.key;
                 if (Array.isArray(local)) {
                     if (!/^\d+$/.test(key)) {
-                        return (0, Messages_1.messageError)("SchemaCannotIndexArrayWithNonNumber", withRef(refMaker, { actual: key }));
+                        return messageError("SchemaCannotIndexArrayWithNonNumber", withRef(refMaker, { actual: key }));
                     }
                     const index = parseInt(first.key, 10);
                     if (index >= local.length) {
-                        return (0, Messages_1.messageError)("SchemaIndexNotInArray", withRef(refMaker, { index }));
+                        return messageError("SchemaIndexNotInArray", withRef(refMaker, { index }));
                     }
                     return this.lookup(local[index], rest, root);
                 }
                 else {
-                    if (!(0, collection_utils_1.hasOwnProperty)(local, key)) {
-                        return (0, Messages_1.messageError)("SchemaKeyNotInObject", withRef(refMaker, { key }));
+                    if (!hasOwnProperty(local, key)) {
+                        return messageError("SchemaKeyNotInObject", withRef(refMaker, { key }));
                     }
                     return this.lookup(checkJSONSchemaObject(local, refMaker)[first.key], rest, root);
                 }
             case PathElementKind.Type:
-                return (0, Support_1.panic)('Cannot look up path that indexes "type"');
+                return panic('Cannot look up path that indexes "type"');
             case PathElementKind.Object:
-                return (0, Support_1.panic)('Cannot look up path that indexes "object"');
+                return panic('Cannot look up path that indexes "object"');
             default:
-                return (0, Support_1.assertNever)(first);
+                return assertNever(first);
         }
     }
     lookupRef(root) {
@@ -278,15 +274,15 @@ class Ref {
         return true;
     }
     hashCode() {
-        let acc = (0, collection_utils_1.hashCodeOf)((0, collection_utils_1.definedMap)(this.addressURI, u => u.toString()));
+        let acc = hashCodeOf(definedMap(this.addressURI, u => u.toString()));
         for (const pe of this.path) {
-            acc = (0, collection_utils_1.addHashCode)(acc, pe.kind);
+            acc = addHashCode(acc, pe.kind);
             switch (pe.kind) {
                 case PathElementKind.Type:
-                    acc = (0, collection_utils_1.addHashCode)(acc, pe.index);
+                    acc = addHashCode(acc, pe.index);
                     break;
                 case PathElementKind.KeyOrIndex:
-                    acc = (0, collection_utils_1.addHashCode)(acc, (0, collection_utils_1.hashString)(pe.key));
+                    acc = addHashCode(acc, hashString(pe.key));
                     break;
                 default:
                     break;
@@ -295,7 +291,6 @@ class Ref {
         return acc;
     }
 }
-exports.Ref = Ref;
 class Location {
     constructor(canonicalRef, virtualRef, haveID = false) {
         this.haveID = haveID;
@@ -308,7 +303,7 @@ class Location {
         const parsed = Ref.parse(id);
         const virtual = this.haveID ? parsed.resolveAgainst(this.virtualRef) : parsed;
         if (!this.haveID) {
-            (0, Messages_1.messageAssert)(virtual.hasAddress, "SchemaIDMustHaveAddress", withRef(this, { id }));
+            messageAssert(virtual.hasAddress, "SchemaIDMustHaveAddress", withRef(this, { id }));
         }
         return new Location(this.canonicalRef, virtual, true);
     }
@@ -328,7 +323,7 @@ class Location {
 class Canonizer {
     constructor(_ctx) {
         this._ctx = _ctx;
-        this._map = new collection_utils_1.EqualityMap();
+        this._map = new EqualityMap();
         this._schemaAddressesAdded = new Set();
     }
     addIDs(schema, loc) {
@@ -385,35 +380,35 @@ function checkTypeList(typeOrTypes, loc) {
         const arr = [];
         for (const t of typeOrTypes) {
             if (typeof t !== "string") {
-                return (0, Messages_1.messageError)("SchemaTypeElementMustBeString", withRef(loc, { element: t }));
+                return messageError("SchemaTypeElementMustBeString", withRef(loc, { element: t }));
             }
             arr.push(t);
         }
         set = new Set(arr);
     }
     else {
-        return (0, Messages_1.messageError)("SchemaTypeMustBeStringOrStringArray", withRef(loc, { actual: typeOrTypes }));
+        return messageError("SchemaTypeMustBeStringOrStringArray", withRef(loc, { actual: typeOrTypes }));
     }
-    (0, Messages_1.messageAssert)(set.size > 0, "SchemaNoTypeSpecified", withRef(loc));
+    messageAssert(set.size > 0, "SchemaNoTypeSpecified", withRef(loc));
     const validTypes = ["null", "boolean", "object", "array", "number", "string", "integer"];
-    const maybeInvalid = (0, collection_utils_1.iterableFind)(set, s => !validTypes.includes(s));
+    const maybeInvalid = iterableFind(set, s => !validTypes.includes(s));
     if (maybeInvalid !== undefined) {
-        return (0, Messages_1.messageError)("SchemaInvalidType", withRef(loc, { type: maybeInvalid }));
+        return messageError("SchemaInvalidType", withRef(loc, { type: maybeInvalid }));
     }
     return set;
 }
 function checkRequiredArray(arr, loc) {
     if (!Array.isArray(arr)) {
-        return (0, Messages_1.messageError)("SchemaRequiredMustBeStringOrStringArray", withRef(loc, { actual: arr }));
+        return messageError("SchemaRequiredMustBeStringOrStringArray", withRef(loc, { actual: arr }));
     }
     for (const e of arr) {
         if (typeof e !== "string") {
-            return (0, Messages_1.messageError)("SchemaRequiredElementMustBeString", withRef(loc, { element: e }));
+            return messageError("SchemaRequiredElementMustBeString", withRef(loc, { element: e }));
         }
     }
     return arr;
 }
-exports.schemaTypeDict = {
+export const schemaTypeDict = {
     null: true,
     boolean: true,
     string: true,
@@ -422,19 +417,19 @@ exports.schemaTypeDict = {
     array: true,
     object: true
 };
-const schemaTypes = Object.getOwnPropertyNames(exports.schemaTypeDict);
+const schemaTypes = Object.getOwnPropertyNames(schemaTypeDict);
 function typeKindForJSONSchemaFormat(format) {
-    const target = (0, collection_utils_1.iterableFind)(Type_1.transformedStringTypeTargetTypeKindsMap, ([_, { jsonSchema }]) => jsonSchema === format);
+    const target = iterableFind(transformedStringTypeTargetTypeKindsMap, ([_, { jsonSchema }]) => jsonSchema === format);
     if (target === undefined)
         return undefined;
     return target[0];
 }
 function schemaFetchError(base, address) {
     if (base === undefined) {
-        return (0, Messages_1.messageError)("SchemaFetchErrorTopLevel", { address });
+        return messageError("SchemaFetchErrorTopLevel", { address });
     }
     else {
-        return (0, Messages_1.messageError)("SchemaFetchError", { address, base: base.canonicalRef });
+        return messageError("SchemaFetchError", { address, base: base.canonicalRef });
     }
 }
 class Resolver {
@@ -453,7 +448,7 @@ class Resolver {
             for (;;) {
                 const loc = this._canonizer.canonize(fetchBase, virtualRef);
                 const canonical = loc.canonicalRef;
-                (0, Support_1.assert)(canonical.hasAddress, "Canonical ref can't be resolved without an address");
+                assert(canonical.hasAddress, "Canonical ref can't be resolved without an address");
                 const address = canonical.address;
                 let schema = canonical.addressURI === undefined
                     ? undefined
@@ -462,7 +457,7 @@ class Resolver {
                     return [undefined, loc];
                 }
                 if (this._canonizer.addSchema(schema, address)) {
-                    (0, Support_1.assert)(!didAdd, "We can't add a schema twice");
+                    assert(!didAdd, "We can't add a schema twice");
                     didAdd = true;
                 }
                 else {
@@ -510,21 +505,21 @@ class Resolver {
 }
 function addTypesInSchema(resolver, typeBuilder, references, attributeProducers) {
     return __awaiter(this, void 0, void 0, function* () {
-        let typeForCanonicalRef = new collection_utils_1.EqualityMap();
+        let typeForCanonicalRef = new EqualityMap();
         function setTypeForLocation(loc, t) {
             const maybeRef = typeForCanonicalRef.get(loc.canonicalRef);
             if (maybeRef !== undefined) {
-                (0, Support_1.assert)(maybeRef === t, "Trying to set path again to different type");
+                assert(maybeRef === t, "Trying to set path again to different type");
             }
             typeForCanonicalRef.set(loc.canonicalRef, t);
         }
         function makeObject(loc, attributes, properties, requiredArray, additionalProperties, sortKey = (k) => k.toLowerCase()) {
             return __awaiter(this, void 0, void 0, function* () {
                 const required = new Set(requiredArray);
-                const propertiesMap = (0, collection_utils_1.mapSortBy)((0, collection_utils_1.mapFromObject)(properties), (_, k) => sortKey(k));
-                const props = yield (0, collection_utils_1.mapMapSync)(propertiesMap, (propSchema, propName) => __awaiter(this, void 0, void 0, function* () {
+                const propertiesMap = mapSortBy(mapFromObject(properties), (_, k) => sortKey(k));
+                const props = yield mapMapSync(propertiesMap, (propSchema, propName) => __awaiter(this, void 0, void 0, function* () {
                     const propLoc = loc.push("properties", propName);
-                    const t = yield toType(checkJSONSchema(propSchema, propLoc.canonicalRef), propLoc, (0, TypeNames_1.makeNamesTypeAttributes)(propName, true));
+                    const t = yield toType(checkJSONSchema(propSchema, propLoc.canonicalRef), propLoc, makeNamesTypeAttributes(propName, true));
                     const isOptional = !required.has(propName);
                     return typeBuilder.makeClassProperty(t, isOptional);
                 }));
@@ -537,16 +532,16 @@ function addTypesInSchema(resolver, typeBuilder, references, attributeProducers)
                 }
                 else {
                     const additionalLoc = loc.push("additionalProperties");
-                    additionalPropertiesType = yield toType(checkJSONSchema(additionalProperties, additionalLoc.canonicalRef), additionalLoc, (0, TypeNames_1.singularizeTypeNames)(attributes));
+                    additionalPropertiesType = yield toType(checkJSONSchema(additionalProperties, additionalLoc.canonicalRef), additionalLoc, singularizeTypeNames(attributes));
                 }
-                const additionalRequired = (0, collection_utils_1.setSubtract)(required, props.keys());
+                const additionalRequired = setSubtract(required, props.keys());
                 if (additionalRequired.size > 0) {
                     const t = additionalPropertiesType;
                     if (t === undefined) {
-                        return (0, Messages_1.messageError)("SchemaAdditionalTypesForbidRequired", withRef(loc));
+                        return messageError("SchemaAdditionalTypesForbidRequired", withRef(loc));
                     }
-                    const additionalProps = (0, collection_utils_1.mapFromIterable)(additionalRequired, _name => typeBuilder.makeClassProperty(t, false));
-                    (0, collection_utils_1.mapMergeInto)(props, additionalProps);
+                    const additionalProps = mapFromIterable(additionalRequired, _name => typeBuilder.makeClassProperty(t, false));
+                    mapMergeInto(props, additionalProps);
                 }
                 return typeBuilder.getUniqueObjectType(attributes, props, additionalPropertiesType);
             });
@@ -556,7 +551,7 @@ function addTypesInSchema(resolver, typeBuilder, references, attributeProducers)
             return __awaiter(this, void 0, void 0, function* () {
                 const enumArray = Array.isArray(schema.enum) ? schema.enum : undefined;
                 const isConst = schema.const !== undefined;
-                const typeSet = (0, collection_utils_1.definedMap)(schema.type, t => checkTypeList(t, loc));
+                const typeSet = definedMap(schema.type, t => checkTypeList(t, loc));
                 function isTypeIncluded(name) {
                     var _a;
                     if (typeSet !== undefined && !typeSet.has(name)) {
@@ -582,7 +577,7 @@ function addTypesInSchema(resolver, typeBuilder, references, attributeProducers)
                     }
                     return true;
                 }
-                const includedTypes = (0, collection_utils_1.setFilter)(schemaTypes, isTypeIncluded);
+                const includedTypes = setFilter(schemaTypes, isTypeIncluded);
                 let producedAttributesForNoCases = undefined;
                 function forEachProducedAttribute(cases, f) {
                     let attributes;
@@ -606,24 +601,24 @@ function addTypesInSchema(resolver, typeBuilder, references, attributeProducers)
                     }
                 }
                 function combineProducedAttributes(f) {
-                    let result = TypeAttributes_1.emptyTypeAttributes;
+                    let result = emptyTypeAttributes;
                     forEachProducedAttribute(undefined, attr => {
                         const maybeAttributes = f(attr);
                         if (maybeAttributes === undefined)
                             return;
-                        result = (0, TypeAttributes_1.combineTypeAttributes)("union", result, maybeAttributes);
+                        result = combineTypeAttributes("union", result, maybeAttributes);
                     });
                     return result;
                 }
                 function makeAttributes(attributes) {
                     if (schema.oneOf === undefined) {
-                        attributes = (0, TypeAttributes_1.combineTypeAttributes)("union", attributes, combineProducedAttributes(({ forType, forUnion, forCases }) => {
-                            (0, Support_1.assert)(forUnion === undefined && forCases === undefined, "We can't have attributes for unions and cases if we don't have a union");
+                        attributes = combineTypeAttributes("union", attributes, combineProducedAttributes(({ forType, forUnion, forCases }) => {
+                            assert(forUnion === undefined && forCases === undefined, "We can't have attributes for unions and cases if we don't have a union");
                             return forType;
                         }));
                     }
-                    return (0, TypeNames_1.modifyTypeNames)(attributes, maybeTypeNames => {
-                        const typeNames = (0, Support_1.defined)(maybeTypeNames);
+                    return modifyTypeNames(attributes, maybeTypeNames => {
+                        const typeNames = defined(maybeTypeNames);
                         if (!typeNames.areInferred) {
                             return typeNames;
                         }
@@ -632,7 +627,7 @@ function addTypesInSchema(resolver, typeBuilder, references, attributeProducers)
                             title = loc.canonicalRef.definitionName;
                         }
                         if (typeof title === "string") {
-                            return TypeNames_1.TypeNames.make(new Set([title]), new Set(), schema.$ref !== undefined);
+                            return TypeNames.make(new Set([title]), new Set(), schema.$ref !== undefined);
                         }
                         else {
                             return typeNames.makeInferred();
@@ -640,11 +635,11 @@ function addTypesInSchema(resolver, typeBuilder, references, attributeProducers)
                     });
                 }
                 typeAttributes = makeAttributes(typeAttributes);
-                const inferredAttributes = (0, TypeAttributes_1.makeTypeAttributesInferred)(typeAttributes);
+                const inferredAttributes = makeTypeAttributesInferred(typeAttributes);
                 function makeStringType(attributes) {
                     const kind = typeKindForJSONSchemaFormat(schema.format);
                     if (kind === undefined) {
-                        return typeBuilder.getStringType(attributes, StringTypes_1.StringTypes.unrestricted);
+                        return typeBuilder.getStringType(attributes, StringTypes.unrestricted);
                     }
                     else {
                         return typeBuilder.getPrimitiveType(kind, attributes);
@@ -652,29 +647,29 @@ function addTypesInSchema(resolver, typeBuilder, references, attributeProducers)
                 }
                 function makeArrayType() {
                     return __awaiter(this, void 0, void 0, function* () {
-                        const singularAttributes = (0, TypeNames_1.singularizeTypeNames)(typeAttributes);
+                        const singularAttributes = singularizeTypeNames(typeAttributes);
                         const items = schema.items;
                         let itemType;
                         if (Array.isArray(items)) {
                             const itemsLoc = loc.push("items");
-                            const itemTypes = yield (0, collection_utils_1.arrayMapSync)(items, (item, i) => __awaiter(this, void 0, void 0, function* () {
+                            const itemTypes = yield arrayMapSync(items, (item, i) => __awaiter(this, void 0, void 0, function* () {
                                 const itemLoc = itemsLoc.push(i.toString());
                                 return yield toType(checkJSONSchema(item, itemLoc.canonicalRef), itemLoc, singularAttributes);
                             }));
-                            itemType = typeBuilder.getUnionType(TypeAttributes_1.emptyTypeAttributes, new Set(itemTypes));
+                            itemType = typeBuilder.getUnionType(emptyTypeAttributes, new Set(itemTypes));
                         }
                         else if (typeof items === "object") {
                             const itemsLoc = loc.push("items");
                             itemType = yield toType(checkJSONSchema(items, itemsLoc.canonicalRef), itemsLoc, singularAttributes);
                         }
                         else if (items !== undefined && items !== true) {
-                            return (0, Messages_1.messageError)("SchemaArrayItemsMustBeStringOrArray", withRef(loc, { actual: items }));
+                            return messageError("SchemaArrayItemsMustBeStringOrArray", withRef(loc, { actual: items }));
                         }
                         else {
                             itemType = typeBuilder.getPrimitiveType("any");
                         }
                         typeBuilder.addAttributes(itemType, singularAttributes);
-                        return typeBuilder.getArrayType(TypeAttributes_1.emptyTypeAttributes, itemType);
+                        return typeBuilder.getArrayType(emptyTypeAttributes, itemType);
                     });
                 }
                 function makeObjectType() {
@@ -704,10 +699,10 @@ function addTypesInSchema(resolver, typeBuilder, references, attributeProducers)
                         // https://github.com/quicktype/quicktype/issues/976
                         if (additionalProperties === undefined &&
                             typeof schema.patternProperties === "object" &&
-                            (0, collection_utils_1.hasOwnProperty)(schema.patternProperties, ".*")) {
+                            hasOwnProperty(schema.patternProperties, ".*")) {
                             additionalProperties = schema.patternProperties[".*"];
                         }
-                        const objectAttributes = (0, TypeAttributes_1.combineTypeAttributes)("union", inferredAttributes, combineProducedAttributes(({ forObject }) => forObject));
+                        const objectAttributes = combineTypeAttributes("union", inferredAttributes, combineProducedAttributes(({ forObject }) => forObject));
                         const order = schema.quicktypePropertyOrder ? schema.quicktypePropertyOrder : [];
                         const orderKey = (propertyName) => {
                             // use the index of the order array
@@ -722,11 +717,11 @@ function addTypesInSchema(resolver, typeBuilder, references, attributeProducers)
                     return __awaiter(this, void 0, void 0, function* () {
                         const kindLoc = loc.push(kind);
                         if (!Array.isArray(cases)) {
-                            return (0, Messages_1.messageError)("SchemaSetOperationCasesIsNotArray", withRef(kindLoc, { operation: kind, cases }));
+                            return messageError("SchemaSetOperationCasesIsNotArray", withRef(kindLoc, { operation: kind, cases }));
                         }
-                        return yield (0, collection_utils_1.arrayMapSync)(cases, (t, index) => __awaiter(this, void 0, void 0, function* () {
+                        return yield arrayMapSync(cases, (t, index) => __awaiter(this, void 0, void 0, function* () {
                             const caseLoc = kindLoc.push(index.toString());
-                            return yield toType(checkJSONSchema(t, caseLoc.canonicalRef), caseLoc, (0, TypeAttributes_1.makeTypeAttributesInferred)(typeAttributes));
+                            return yield toType(checkJSONSchema(t, caseLoc.canonicalRef), caseLoc, makeTypeAttributesInferred(typeAttributes));
                         }));
                     });
                 }
@@ -735,17 +730,17 @@ function addTypesInSchema(resolver, typeBuilder, references, attributeProducers)
                 function convertOneOrAnyOf(cases, kind) {
                     return __awaiter(this, void 0, void 0, function* () {
                         const typeRefs = yield makeTypesFromCases(cases, kind);
-                        let unionAttributes = (0, TypeAttributes_1.makeTypeAttributesInferred)(typeAttributes);
+                        let unionAttributes = makeTypeAttributesInferred(typeAttributes);
                         if (kind === "oneOf") {
                             forEachProducedAttribute(cases, ({ forType, forUnion, forCases }) => {
                                 if (forType !== undefined) {
                                     typeBuilder.addAttributes(intersectionType, forType);
                                 }
                                 if (forUnion !== undefined) {
-                                    unionAttributes = (0, TypeAttributes_1.combineTypeAttributes)("union", unionAttributes, forUnion);
+                                    unionAttributes = combineTypeAttributes("union", unionAttributes, forUnion);
                                 }
                                 if (forCases !== undefined) {
-                                    (0, Support_1.assert)(forCases.length === typeRefs.length, "Number of case attributes doesn't match number of cases");
+                                    assert(forCases.length === typeRefs.length, "Number of case attributes doesn't match number of cases");
                                     for (let i = 0; i < typeRefs.length; i++) {
                                         typeBuilder.addAttributes(typeRefs[i], forCases[i]);
                                     }
@@ -781,13 +776,13 @@ function addTypesInSchema(resolver, typeBuilder, references, attributeProducers)
                     ]) {
                         if (!includedTypes.has(name))
                             continue;
-                        const attributes = (0, Type_1.isNumberTypeKind)(kind) ? numberAttributes : undefined;
+                        const attributes = isNumberTypeKind(kind) ? numberAttributes : undefined;
                         unionTypes.push(typeBuilder.getPrimitiveType(kind, attributes));
                     }
-                    const stringAttributes = (0, TypeAttributes_1.combineTypeAttributes)("union", inferredAttributes, combineProducedAttributes(({ forString }) => forString));
+                    const stringAttributes = combineTypeAttributes("union", inferredAttributes, combineProducedAttributes(({ forString }) => forString));
                     if (needStringEnum || isConst) {
                         const cases = isConst ? [schema.const] : (_a = enumArray === null || enumArray === void 0 ? void 0 : enumArray.filter(x => typeof x === "string")) !== null && _a !== void 0 ? _a : [];
-                        unionTypes.push(typeBuilder.getStringType(stringAttributes, StringTypes_1.StringTypes.fromCases(cases)));
+                        unionTypes.push(typeBuilder.getStringType(stringAttributes, StringTypes.fromCases(cases)));
                     }
                     else if (includedTypes.has("string")) {
                         unionTypes.push(makeStringType(stringAttributes));
@@ -802,14 +797,14 @@ function addTypesInSchema(resolver, typeBuilder, references, attributeProducers)
                 }
                 if (schema.$ref !== undefined) {
                     if (typeof schema.$ref !== "string") {
-                        return (0, Messages_1.messageError)("SchemaRefMustBeString", withRef(loc, { actual: typeof schema.$ref }));
+                        return messageError("SchemaRefMustBeString", withRef(loc, { actual: typeof schema.$ref }));
                     }
                     const virtualRef = Ref.parse(schema.$ref);
                     const [target, newLoc] = yield resolver.resolveVirtualRef(loc, virtualRef);
-                    const attributes = (0, TypeNames_1.modifyTypeNames)(typeAttributes, tn => {
-                        if (!(0, Support_1.defined)(tn).areInferred)
+                    const attributes = modifyTypeNames(typeAttributes, tn => {
+                        if (!defined(tn).areInferred)
                             return tn;
-                        return TypeNames_1.TypeNames.make(new Set([newLoc.canonicalRef.name]), new Set(), true);
+                        return TypeNames.make(new Set([newLoc.canonicalRef.name]), new Set(), true);
                     });
                     types.push(yield toType(target, newLoc, attributes));
                 }
@@ -836,7 +831,7 @@ function addTypesInSchema(resolver, typeBuilder, references, attributeProducers)
                 if (typeof schema === "boolean") {
                     // FIXME: Empty union.  We'd have to check that it's supported everywhere,
                     // in particular in union flattening.
-                    (0, Messages_1.messageAssert)(schema === true, "SchemaFalseNotSupported", withRef(loc));
+                    messageAssert(schema === true, "SchemaFalseNotSupported", withRef(loc));
                     result = typeBuilder.getPrimitiveType("any");
                 }
                 else {
@@ -849,7 +844,7 @@ function addTypesInSchema(resolver, typeBuilder, references, attributeProducers)
         }
         for (const [topLevelName, topLevelRef] of references) {
             const [target, loc] = yield resolver.resolveTopLevelRef(topLevelRef);
-            const t = yield toType(target, loc, (0, TypeNames_1.makeNamesTypeAttributes)(topLevelName, false));
+            const t = yield toType(target, loc, makeNamesTypeAttributes(topLevelName, false));
             typeBuilder.addTopLevel(topLevelName, t);
         }
     });
@@ -883,7 +878,7 @@ function nameFromURI(uri) {
     if (filename !== "") {
         return removeExtension(filename);
     }
-    return (0, Messages_1.messageError)("DriverCannotInferNameForSchema", { uri: uri.toString() });
+    return messageError("DriverCannotInferNameForSchema", { uri: uri.toString() });
 }
 function refsInSchemaForURI(resolver, uri, defaultName) {
     return __awaiter(this, void 0, void 0, function* () {
@@ -899,9 +894,9 @@ function refsInSchemaForURI(resolver, uri, defaultName) {
         const schema = (yield resolver.resolveTopLevelRef(ref))[0];
         if (propertiesAreTypes) {
             if (typeof schema !== "object") {
-                return (0, Messages_1.messageError)("SchemaCannotGetTypesFromBoolean", { ref: ref.toString() });
+                return messageError("SchemaCannotGetTypesFromBoolean", { ref: ref.toString() });
             }
-            return (0, collection_utils_1.mapMap)((0, collection_utils_1.mapFromObject)(schema), (_, name) => ref.push(name));
+            return mapMap(mapFromObject(schema), (_, name) => ref.push(name));
         }
         else {
             let name;
@@ -916,7 +911,7 @@ function refsInSchemaForURI(resolver, uri, defaultName) {
         }
     });
 }
-class InputJSONSchemaStore extends JSONSchemaStore_1.JSONSchemaStore {
+class InputJSONSchemaStore extends JSONSchemaStore {
     constructor(_inputs, _delegate) {
         super();
         this._inputs = _inputs;
@@ -926,16 +921,16 @@ class InputJSONSchemaStore extends JSONSchemaStore_1.JSONSchemaStore {
         return __awaiter(this, void 0, void 0, function* () {
             const maybeInput = this._inputs.get(address);
             if (maybeInput !== undefined) {
-                return checkJSONSchema((0, Support_1.parseJSON)(maybeInput, "JSON Schema", address), () => Ref.root(address));
+                return checkJSONSchema(parseJSON(maybeInput, "JSON Schema", address), () => Ref.root(address));
             }
             if (this._delegate === undefined) {
-                return (0, Support_1.panic)(`Schema URI ${address} requested, but no store given`);
+                return panic(`Schema URI ${address} requested, but no store given`);
             }
             return yield this._delegate.fetch(address);
         });
     }
 }
-class JSONSchemaInput {
+export class JSONSchemaInput {
     constructor(_schemaStore, additionalAttributeProducers = [], _additionalSchemaAddresses = []) {
         this._schemaStore = _schemaStore;
         this._additionalSchemaAddresses = _additionalSchemaAddresses;
@@ -946,13 +941,13 @@ class JSONSchemaInput {
         this._topLevels = new Map();
         this._needIR = false;
         this._attributeProducers = [
-            Description_1.descriptionAttributeProducer,
-            AccessorNames_1.accessorNamesAttributeProducer,
-            EnumValues_1.enumValuesAttributeProducer,
-            URIAttributes_1.uriSchemaAttributesProducer,
-            Constraints_1.minMaxAttributeProducer,
-            Constraints_1.minMaxLengthAttributeProducer,
-            Constraints_1.patternAttributeProducer
+            descriptionAttributeProducer,
+            accessorNamesAttributeProducer,
+            enumValuesAttributeProducer,
+            uriSchemaAttributesProducer,
+            minMaxAttributeProducer,
+            minMaxLengthAttributeProducer,
+            patternAttributeProducer
         ].concat(additionalAttributeProducers);
     }
     get needIR() {
@@ -968,7 +963,7 @@ class JSONSchemaInput {
             let maybeSchemaStore = this._schemaStore;
             if (this._schemaInputs.size === 0) {
                 if (maybeSchemaStore === undefined) {
-                    return (0, Support_1.panic)("Must have a schema store to process JSON Schema");
+                    return panic("Must have a schema store to process JSON Schema");
                 }
             }
             else {
@@ -979,11 +974,11 @@ class JSONSchemaInput {
             for (const address of this._additionalSchemaAddresses) {
                 const schema = yield schemaStore.get(address, ctx.debugPrintSchemaResolving);
                 if (schema === undefined) {
-                    return (0, Messages_1.messageError)("SchemaFetchErrorAdditional", { address });
+                    return messageError("SchemaFetchErrorAdditional", { address });
                 }
                 canonizer.addSchema(schema, address);
             }
-            const resolver = new Resolver(ctx, (0, Support_1.defined)(this._schemaStore), canonizer);
+            const resolver = new Resolver(ctx, defined(this._schemaStore), canonizer);
             for (const [normalizedURI, source] of this._schemaSources) {
                 const givenName = source.name;
                 const refs = yield refsInSchemaForURI(resolver, normalizedURI, givenName);
@@ -1007,7 +1002,7 @@ class JSONSchemaInput {
         });
     }
     addTypesSync() {
-        return (0, Support_1.panic)("addTypesSync not supported in JSONSchemaInput");
+        return panic("addTypesSync not supported in JSONSchemaInput");
     }
     addSource(schemaSource) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -1021,7 +1016,7 @@ class JSONSchemaInput {
         }
         let normalizedURIs;
         if (uris === undefined) {
-            normalizedURIs = [new urijs_1.default(name)];
+            normalizedURIs = [new URI(name)];
         }
         else {
             normalizedURIs = uris.map(uri => {
@@ -1033,7 +1028,7 @@ class JSONSchemaInput {
             });
         }
         if (schema === undefined) {
-            (0, Support_1.assert)(uris !== undefined, "URIs must be given if schema source is not specified");
+            assert(uris !== undefined, "URIs must be given if schema source is not specified");
         }
         else {
             for (let i = 0; i < normalizedURIs.length; i++) {
@@ -1062,9 +1057,8 @@ class JSONSchemaInput {
         }
         const set = new Set(this._schemaSources.map(([_, { schema }]) => schema));
         if (set.size === 1) {
-            return (0, Support_1.defined)((0, collection_utils_1.iterableFirst)(set));
+            return defined(iterableFirst(set));
         }
         return undefined;
     }
 }
-exports.JSONSchemaInput = JSONSchemaInput;

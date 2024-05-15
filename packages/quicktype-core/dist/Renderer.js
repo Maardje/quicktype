@@ -1,11 +1,8 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.Renderer = void 0;
-const collection_utils_1 = require("collection-utils");
-const Annotation_1 = require("./Annotation");
-const Naming_1 = require("./Naming");
-const Source_1 = require("./Source");
-const Support_1 = require("./support/Support");
+import { iterableEnumerate } from "collection-utils";
+import { IssueAnnotationData } from "./Annotation";
+import { assignNames } from "./Naming";
+import { annotated, newline, sourcelikeToSource } from "./Source";
+import { assert, panic } from "./support/Support";
 function getBlankLineConfig(cfg) {
     if (Array.isArray(cfg)) {
         return { position: cfg[0], count: cfg[1] };
@@ -49,7 +46,7 @@ class EmitContext {
         this._preventBlankLine = false;
     }
     emitNewline() {
-        const nl = (0, Source_1.newline)();
+        const nl = newline();
         this.pushItem(nl);
         this._lastNewline = nl;
     }
@@ -77,18 +74,18 @@ class EmitContext {
     }
     changeIndent(offset) {
         if (this._lastNewline === undefined) {
-            return (0, Support_1.panic)("Cannot change indent for the first line");
+            return panic("Cannot change indent for the first line");
         }
         this._lastNewline.indentationChange += offset;
     }
 }
-class Renderer {
+export class Renderer {
     constructor(targetLanguage, renderContext) {
         this.targetLanguage = targetLanguage;
         this.emitTable = (tableArray) => {
             if (tableArray.length === 0)
                 return;
-            const table = tableArray.map(r => r.map(sl => (0, Source_1.sourcelikeToSource)(sl)));
+            const table = tableArray.map(r => r.map(sl => sourcelikeToSource(sl)));
             this._emitContext.emitItem({ kind: "table", table });
             this._emitContext.emitNewline();
         };
@@ -147,7 +144,7 @@ class Renderer {
         for (let i = 1; i < numLines; i++) {
             const line = lines[i];
             const { indent, text } = lineIndentation(line);
-            (0, Support_1.assert)(indent % 4 === 0, "Indentation is not a multiple of 4.");
+            assert(indent % 4 === 0, "Indentation is not a multiple of 4.");
             if (text !== null) {
                 const newIndent = indent / 4;
                 this.changeIndent(newIndent - currentIndent);
@@ -166,7 +163,7 @@ class Renderer {
         const oldEmitContext = this._emitContext;
         this._emitContext = new EmitContext();
         emitter();
-        (0, Support_1.assert)(!this._emitContext.isNested, "emit context not restored correctly");
+        assert(!this._emitContext.isNested, "emit context not restored correctly");
         const source = this._emitContext.source;
         this._emitContext = oldEmitContext;
         return source;
@@ -178,11 +175,11 @@ class Renderer {
     }
     emitAnnotated(annotation, emitter) {
         const lines = this.gatherSource(emitter);
-        const source = (0, Source_1.sourcelikeToSource)(lines);
-        this._emitContext.emitItem((0, Source_1.annotated)(annotation, source));
+        const source = sourcelikeToSource(lines);
+        this._emitContext.emitItem(annotated(annotation, source));
     }
     emitIssue(message, emitter) {
-        this.emitAnnotated(new Annotation_1.IssueAnnotationData(message), emitter);
+        this.emitAnnotated(new IssueAnnotationData(message), emitter);
     }
     changeIndent(offset) {
         this._emitContext.changeIndent(offset);
@@ -190,7 +187,7 @@ class Renderer {
     iterableForEach(iterable, emitter) {
         const items = Array.from(iterable);
         let onFirst = true;
-        for (const [i, v] of (0, collection_utils_1.iterableEnumerate)(items)) {
+        for (const [i, v] of iterableEnumerate(items)) {
             const position = items.length === 1 ? "only" : onFirst ? "first" : i === items.length - 1 ? "last" : "middle";
             emitter(v, position);
             onFirst = false;
@@ -223,7 +220,7 @@ class Renderer {
         this.changeIndent(-1);
     }
     assignNames() {
-        return (0, Naming_1.assignNames)(this.setUpNaming());
+        return assignNames(this.setUpNaming());
     }
     initializeEmitContextForFilename(filename) {
         if (this._finishedEmitContexts.has(filename.toLowerCase())) {
@@ -237,7 +234,7 @@ class Renderer {
         if (this._finishedFiles.has(filename)) {
             console.log(`[WARNING] Tried to emit file ${filename} more than once. If performing multi-file output this warning can be safely ignored.`);
         }
-        const source = (0, Source_1.sourcelikeToSource)(this._emitContext.source);
+        const source = sourcelikeToSource(this._emitContext.source);
         this._finishedFiles.set(filename, source);
         // [Michael Fey (@MrRooni), 2019-5-9] We save the current EmitContext for possible reuse later. We put it into the map with a lowercased version of the key so we can do a case-insensitive lookup later. The reason we lowercase it is because some schema (looking at you keyword-unions.schema) define objects of the same name with different casing. BOOL vs. bool, for example.
         this._finishedEmitContexts.set(filename.toLowerCase(), this._emitContext);
@@ -253,9 +250,8 @@ class Renderer {
     }
     get names() {
         if (this._names === undefined) {
-            return (0, Support_1.panic)("Names accessed before they were assigned");
+            return panic("Names accessed before they were assigned");
         }
         return this._names;
     }
 }
-exports.Renderer = Renderer;

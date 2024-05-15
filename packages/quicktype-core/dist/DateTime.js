@@ -1,8 +1,5 @@
-"use strict";
 /* eslint-disable */
 // https://github.com/epoberezkin/ajv/blob/4d76c6fb813b136b6ec4fe74990bc97233d75dea/lib/compile/formats.js
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.DefaultDateTimeRecognizer = void 0;
 /*
 The MIT License (MIT)
 
@@ -30,7 +27,7 @@ const DATE = /^(\d\d\d\d)-(\d\d)-(\d\d)$/;
 const DAYS = [0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 const TIME = /^(\d\d):(\d\d):(\d\d)(\.\d+)?(z|[+-]\d\d:\d\d)?$/i;
 const DATE_TIME_SEPARATOR = /t|\s/i;
-class DefaultDateTimeRecognizer {
+export class DefaultDateTimeRecognizer {
     isDate(str) {
         // full-date from http://tools.ietf.org/html/rfc3339#section-5.6
         const matches = DATE.exec(str);
@@ -55,4 +52,3 @@ class DefaultDateTimeRecognizer {
         return dateTime.length === 2 && this.isDate(dateTime[0]) && this.isTime(dateTime[1]);
     }
 }
-exports.DefaultDateTimeRecognizer = DefaultDateTimeRecognizer;

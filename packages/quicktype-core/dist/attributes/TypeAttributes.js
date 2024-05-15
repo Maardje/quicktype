@@ -1,9 +1,6 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.increaseTypeAttributesDistance = exports.makeTypeAttributesInferred = exports.combineTypeAttributes = exports.emptyTypeAttributes = exports.TypeAttributeKind = void 0;
-const collection_utils_1 = require("collection-utils");
-const Support_1 = require("../support/Support");
-class TypeAttributeKind {
+import { hashString, mapFilter, mapFilterMap, mapTranspose } from "collection-utils";
+import { assert, panic } from "../support/Support";
+export class TypeAttributeKind {
     constructor(name) {
         this.name = name;
     }
@@ -11,13 +8,13 @@ class TypeAttributeKind {
         return kind !== "any";
     }
     combine(_attrs) {
-        return (0, Support_1.panic)(`Cannot combine type attribute ${this.name}`);
+        return panic(`Cannot combine type attribute ${this.name}`);
     }
     intersect(attrs) {
         return this.combine(attrs);
     }
     makeInferred(_) {
-        return (0, Support_1.panic)(`Cannot make type attribute ${this.name} inferred`);
+        return panic(`Cannot make type attribute ${this.name} inferred`);
     }
     increaseDistance(attrs) {
         return attrs;
@@ -67,7 +64,7 @@ class TypeAttributeKind {
         return this.modifyInAttributes(a, makeDefault);
     }
     removeInAttributes(a) {
-        return (0, collection_utils_1.mapFilter)(a, (_, k) => k !== this);
+        return mapFilter(a, (_, k) => k !== this);
     }
     equals(other) {
         if (!(other instanceof TypeAttributeKind)) {
@@ -76,12 +73,11 @@ class TypeAttributeKind {
         return this.name === other.name;
     }
     hashCode() {
-        return (0, collection_utils_1.hashString)(this.name);
+        return hashString(this.name);
     }
 }
-exports.TypeAttributeKind = TypeAttributeKind;
-exports.emptyTypeAttributes = new Map();
-function combineTypeAttributes(combinationKind, firstOrArray, second) {
+export const emptyTypeAttributes = new Map();
+export function combineTypeAttributes(combinationKind, firstOrArray, second) {
     const union = combinationKind === "union";
     let attributeArray;
     if (Array.isArray(firstOrArray)) {
@@ -89,15 +85,15 @@ function combineTypeAttributes(combinationKind, firstOrArray, second) {
     }
     else {
         if (second === undefined) {
-            return (0, Support_1.panic)("Must have on array or two attributes");
+            return panic("Must have on array or two attributes");
         }
         attributeArray = [firstOrArray, second];
     }
-    const attributesByKind = (0, collection_utils_1.mapTranspose)(attributeArray);
+    const attributesByKind = mapTranspose(attributeArray);
     // FIXME: strongly type this
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     function combine(attrs, kind) {
-        (0, Support_1.assert)(attrs.length > 0, "Cannot combine zero type attributes");
+        assert(attrs.length > 0, "Cannot combine zero type attributes");
         if (attrs.length === 1)
             return attrs[0];
         if (union) {
@@ -107,14 +103,11 @@ function combineTypeAttributes(combinationKind, firstOrArray, second) {
             return kind.intersect(attrs);
         }
     }
-    return (0, collection_utils_1.mapFilterMap)(attributesByKind, combine);
+    return mapFilterMap(attributesByKind, combine);
 }
-exports.combineTypeAttributes = combineTypeAttributes;
-function makeTypeAttributesInferred(attr) {
-    return (0, collection_utils_1.mapFilterMap)(attr, (value, kind) => kind.makeInferred(value));
+export function makeTypeAttributesInferred(attr) {
+    return mapFilterMap(attr, (value, kind) => kind.makeInferred(value));
 }
-exports.makeTypeAttributesInferred = makeTypeAttributesInferred;
-function increaseTypeAttributesDistance(attr) {
-    return (0, collection_utils_1.mapFilterMap)(attr, (value, kind) => kind.increaseDistance(value));
+export function increaseTypeAttributesDistance(attr) {
+    return mapFilterMap(attr, (value, kind) => kind.increaseDistance(value));
 }
-exports.increaseTypeAttributesDistance = increaseTypeAttributesDistance;

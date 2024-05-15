@@ -1,4 +1,3 @@
-"use strict";
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -8,15 +7,13 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.JSONSchemaStore = void 0;
-const Support_1 = require("../support/Support");
-class JSONSchemaStore {
+import { assert } from "../support/Support";
+export class JSONSchemaStore {
     constructor() {
         this._schemas = new Map();
     }
     add(address, schema) {
-        (0, Support_1.assert)(!this._schemas.has(address), "Cannot set a schema for an address twice");
+        assert(!this._schemas.has(address), "Cannot set a schema for an address twice");
         this._schemas.set(address, schema);
     }
     get(address, debugPrint) {
@@ -48,4 +45,3 @@ class JSONSchemaStore {
         });
     }
 }
-exports.JSONSchemaStore = JSONSchemaStore;

@@ -1,51 +1,48 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.CPlusPlusRenderer = exports.MemberNames = exports.GlobalNames = exports.IncludeKind = exports.CPlusPlusTargetLanguage = exports.cPlusPlusOptions = void 0;
-const collection_utils_1 = require("collection-utils");
-const Annotation_1 = require("../Annotation");
-const AccessorNames_1 = require("../attributes/AccessorNames");
-const Constraints_1 = require("../attributes/Constraints");
-const EnumValues_1 = require("../attributes/EnumValues");
-const ConvenienceRenderer_1 = require("../ConvenienceRenderer");
-const Naming_1 = require("../Naming");
-const RendererOptions_1 = require("../RendererOptions");
-const Source_1 = require("../Source");
-const Strings_1 = require("../support/Strings");
-const Support_1 = require("../support/Support");
-const TargetLanguage_1 = require("../TargetLanguage");
-const Type_1 = require("../Type");
-const TypeUtils_1 = require("../TypeUtils");
+import { arrayIntercalate, iterableFind, iterableFirst, iterableSome, setUnion, toReadonlyArray, withDefault } from "collection-utils";
+import { anyTypeIssueAnnotation, nullTypeIssueAnnotation } from "../Annotation";
+import { getAccessorName } from "../attributes/AccessorNames";
+import { minMaxLengthForType, minMaxValueForType, patternForType } from "../attributes/Constraints";
+import { enumCaseValues } from "../attributes/EnumValues";
+import { ConvenienceRenderer } from "../ConvenienceRenderer";
+import { DependencyName, funPrefixNamer } from "../Naming";
+import { BooleanOption, EnumOption, StringOption, getOptionValues } from "../RendererOptions";
+import { maybeAnnotated } from "../Source";
+import { isAscii, isLetterOrUnderscoreOrDigit, legalizeCharacters, makeNameStyle, stringEscape } from "../support/Strings";
+import { assert, assertNever, defined, numberEnumValues, panic } from "../support/Support";
+import { TargetLanguage } from "../TargetLanguage";
+import { ArrayType, ClassType, EnumType, MapType, UnionType } from "../Type";
+import { directlyReachableTypes, isNamedType, matchType, nullableFromUnion, removeNullFromUnion } from "../TypeUtils";
 const pascalValue = ["pascal-case", "pascal"];
 const underscoreValue = ["underscore-case", "underscore"];
 const camelValue = ["camel-case", "camel"];
 const upperUnderscoreValue = ["upper-underscore-case", "upper-underscore"];
 const pascalUpperAcronymsValue = ["pascal-case-upper-acronyms", "pascal-upper-acronyms"];
 const camelUpperAcronymsValue = ["camel-case-upper-acronyms", "camel-upper-acronyms"];
-exports.cPlusPlusOptions = {
-    typeSourceStyle: new RendererOptions_1.EnumOption("source-style", "Source code generation type,  whether to generate single or multiple source files", [
+export const cPlusPlusOptions = {
+    typeSourceStyle: new EnumOption("source-style", "Source code generation type,  whether to generate single or multiple source files", [
         ["single-source", true],
         ["multi-source", false]
     ], "single-source", "secondary"),
-    includeLocation: new RendererOptions_1.EnumOption("include-location", "Whether json.hpp is to be located globally or locally", [
+    includeLocation: new EnumOption("include-location", "Whether json.hpp is to be located globally or locally", [
         ["local-include", true],
         ["global-include", false]
     ], "local-include", "secondary"),
-    codeFormat: new RendererOptions_1.EnumOption("code-format", "Generate classes with getters/setters, instead of structs", [
+    codeFormat: new EnumOption("code-format", "Generate classes with getters/setters, instead of structs", [
         ["with-struct", false],
         ["with-getter-setter", true]
     ], "with-getter-setter"),
-    wstring: new RendererOptions_1.EnumOption("wstring", "Store strings using Utf-16 std::wstring, rather than Utf-8 std::string", [
+    wstring: new EnumOption("wstring", "Store strings using Utf-16 std::wstring, rather than Utf-8 std::string", [
         ["use-string", false],
         ["use-wstring", true]
     ], "use-string"),
-    westConst: new RendererOptions_1.EnumOption("const-style", "Put const to the left/west (const T) or right/east (T const)", [
+    westConst: new EnumOption("const-style", "Put const to the left/west (const T) or right/east (T const)", [
         ["west-const", true],
         ["east-const", false]
     ], "west-const"),
-    justTypes: new RendererOptions_1.BooleanOption("just-types", "Plain types only", false),
-    namespace: new RendererOptions_1.StringOption("namespace", "Name of the generated namespace(s)", "NAME", "quicktype"),
-    enumType: new RendererOptions_1.StringOption("enum-type", "Type of enum class", "NAME", "int", "secondary"),
-    typeNamingStyle: new RendererOptions_1.EnumOption("type-style", "Naming style for types", [
+    justTypes: new BooleanOption("just-types", "Plain types only", false),
+    namespace: new StringOption("namespace", "Name of the generated namespace(s)", "NAME", "quicktype"),
+    enumType: new StringOption("enum-type", "Type of enum class", "NAME", "int", "secondary"),
+    typeNamingStyle: new EnumOption("type-style", "Naming style for types", [
         pascalValue,
         underscoreValue,
         camelValue,
@@ -53,7 +50,7 @@ exports.cPlusPlusOptions = {
         pascalUpperAcronymsValue,
         camelUpperAcronymsValue
     ]),
-    memberNamingStyle: new RendererOptions_1.EnumOption("member-style", "Naming style for members", [
+    memberNamingStyle: new EnumOption("member-style", "Naming style for members", [
         underscoreValue,
         pascalValue,
         camelValue,
@@ -61,7 +58,7 @@ exports.cPlusPlusOptions = {
         pascalUpperAcronymsValue,
         camelUpperAcronymsValue
     ]),
-    enumeratorNamingStyle: new RendererOptions_1.EnumOption("enumerator-style", "Naming style for enumerators", [
+    enumeratorNamingStyle: new EnumOption("enumerator-style", "Naming style for enumerators", [
         upperUnderscoreValue,
         underscoreValue,
         pascalValue,
@@ -69,28 +66,28 @@ exports.cPlusPlusOptions = {
         pascalUpperAcronymsValue,
         camelUpperAcronymsValue
     ]),
-    boost: new RendererOptions_1.BooleanOption("boost", "Require a dependency on boost. Without boost, C++17 is required", true),
-    hideNullOptional: new RendererOptions_1.BooleanOption("hide-null-optional", "Hide null value for optional field", false)
+    boost: new BooleanOption("boost", "Require a dependency on boost. Without boost, C++17 is required", true),
+    hideNullOptional: new BooleanOption("hide-null-optional", "Hide null value for optional field", false)
 };
-class CPlusPlusTargetLanguage extends TargetLanguage_1.TargetLanguage {
+export class CPlusPlusTargetLanguage extends TargetLanguage {
     constructor(displayName = "C++", names = ["c++", "cpp", "cplusplus"], extension = "cpp") {
         super(displayName, names, extension);
     }
     getOptions() {
         return [
-            exports.cPlusPlusOptions.justTypes,
-            exports.cPlusPlusOptions.namespace,
-            exports.cPlusPlusOptions.codeFormat,
-            exports.cPlusPlusOptions.wstring,
-            exports.cPlusPlusOptions.westConst,
-            exports.cPlusPlusOptions.typeSourceStyle,
-            exports.cPlusPlusOptions.includeLocation,
-            exports.cPlusPlusOptions.typeNamingStyle,
-            exports.cPlusPlusOptions.memberNamingStyle,
-            exports.cPlusPlusOptions.enumeratorNamingStyle,
-            exports.cPlusPlusOptions.enumType,
-            exports.cPlusPlusOptions.boost,
-            exports.cPlusPlusOptions.hideNullOptional
+            cPlusPlusOptions.justTypes,
+            cPlusPlusOptions.namespace,
+            cPlusPlusOptions.codeFormat,
+            cPlusPlusOptions.wstring,
+            cPlusPlusOptions.westConst,
+            cPlusPlusOptions.typeSourceStyle,
+            cPlusPlusOptions.includeLocation,
+            cPlusPlusOptions.typeNamingStyle,
+            cPlusPlusOptions.memberNamingStyle,
+            cPlusPlusOptions.enumeratorNamingStyle,
+            cPlusPlusOptions.enumType,
+            cPlusPlusOptions.boost,
+            cPlusPlusOptions.hideNullOptional
         ];
     }
     get supportsUnionsWithBothNumberTypes() {
@@ -100,19 +97,18 @@ class CPlusPlusTargetLanguage extends TargetLanguage_1.TargetLanguage {
         return true;
     }
     makeRenderer(renderContext, untypedOptionValues) {
-        return new CPlusPlusRenderer(this, renderContext, (0, RendererOptions_1.getOptionValues)(exports.cPlusPlusOptions, untypedOptionValues));
+        return new CPlusPlusRenderer(this, renderContext, getOptionValues(cPlusPlusOptions, untypedOptionValues));
     }
 }
-exports.CPlusPlusTargetLanguage = CPlusPlusTargetLanguage;
 function constraintsForType(t) {
-    const minMax = (0, Constraints_1.minMaxValueForType)(t);
-    const minMaxLength = (0, Constraints_1.minMaxLengthForType)(t);
-    const pattern = (0, Constraints_1.patternForType)(t);
+    const minMax = minMaxValueForType(t);
+    const minMaxLength = minMaxLengthForType(t);
+    const pattern = patternForType(t);
     if (minMax === undefined && minMaxLength === undefined && pattern === undefined)
         return undefined;
     return { minMax, minMaxLength, pattern };
 }
-const legalizeName = (0, Strings_1.legalizeCharacters)(cp => (0, Strings_1.isAscii)(cp) && (0, Strings_1.isLetterOrUnderscoreOrDigit)(cp));
+const legalizeName = legalizeCharacters(cp => isAscii(cp) && isLetterOrUnderscoreOrDigit(cp));
 const keywords = [
     "alignas",
     "alignof",
@@ -224,13 +220,13 @@ const optionalFactoryAsSharedType = "std::make_shared";
  * e.g. class#A using class#B using class#A (obviously not directly,
  * but in vector or in variant) we can forward declare them;
  */
-var IncludeKind;
+export var IncludeKind;
 (function (IncludeKind) {
     IncludeKind["ForwardDeclare"] = "ForwardDeclare";
     IncludeKind["Include"] = "Include";
-})(IncludeKind = exports.IncludeKind || (exports.IncludeKind = {}));
+})(IncludeKind || (IncludeKind = {}));
 // FIXME: make these string enums eventually
-var GlobalNames;
+export var GlobalNames;
 (function (GlobalNames) {
     GlobalNames[GlobalNames["ClassMemberConstraints"] = 1] = "ClassMemberConstraints";
     GlobalNames[GlobalNames["ClassMemberConstraintException"] = 2] = "ClassMemberConstraintException";
@@ -240,9 +236,9 @@ var GlobalNames;
     GlobalNames[GlobalNames["ValueTooLongException"] = 6] = "ValueTooLongException";
     GlobalNames[GlobalNames["InvalidPatternException"] = 7] = "InvalidPatternException";
     GlobalNames[GlobalNames["CheckConstraint"] = 8] = "CheckConstraint";
-})(GlobalNames = exports.GlobalNames || (exports.GlobalNames = {}));
+})(GlobalNames || (GlobalNames = {}));
 // FIXME: make these string enums eventually
-var MemberNames;
+export var MemberNames;
 (function (MemberNames) {
     MemberNames[MemberNames["MinIntValue"] = 1] = "MinIntValue";
     MemberNames[MemberNames["GetMinIntValue"] = 2] = "GetMinIntValue";
@@ -265,7 +261,7 @@ var MemberNames;
     MemberNames[MemberNames["Pattern"] = 19] = "Pattern";
     MemberNames[MemberNames["GetPattern"] = 20] = "GetPattern";
     MemberNames[MemberNames["SetPattern"] = 21] = "SetPattern";
-})(MemberNames = exports.MemberNames || (exports.MemberNames = {}));
+})(MemberNames || (MemberNames = {}));
 function addQualifier(qualifier, qualified) {
     if (qualified.length === 0) {
         return [];
@@ -311,7 +307,7 @@ class BaseString {
         return this._toString.wrap([], inner);
     }
 }
-class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
+export class CPlusPlusRenderer extends ConvenienceRenderer {
     constructor(targetLanguage, renderContext, _options) {
         super(targetLanguage, renderContext);
         this._options = _options;
@@ -414,10 +410,10 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         this._enumType = _options.enumType;
         this._namespaceNames = _options.namespace.split("::");
         this.typeNamingStyle = _options.typeNamingStyle;
-        this._namedTypeNameStyle = (0, Strings_1.makeNameStyle)(this.typeNamingStyle, legalizeName);
+        this._namedTypeNameStyle = makeNameStyle(this.typeNamingStyle, legalizeName);
         this.enumeratorNamingStyle = _options.enumeratorNamingStyle;
-        this._memberNameStyle = (0, Strings_1.makeNameStyle)(_options.memberNamingStyle, legalizeName);
-        this._memberNamingFunction = (0, Naming_1.funPrefixNamer)("members", this._memberNameStyle);
+        this._memberNameStyle = makeNameStyle(_options.memberNamingStyle, legalizeName);
+        this._memberNamingFunction = funPrefixNamer("members", this._memberNameStyle);
         this._gettersAndSettersForPropertyName = new Map();
         this._allTypeNames = new Set();
         this._generatedFiles = new Set();
@@ -505,9 +501,9 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             // on the single type the variant would contain seems
             // to solve the problem. But does this point to a problem
             // with the core library or with the CPlusPlus package
-            const [, nonNulls] = (0, TypeUtils_1.removeNullFromUnion)(t);
+            const [, nonNulls] = removeNullFromUnion(t);
             if (nonNulls.size === 1) {
-                const tt = (0, Support_1.defined)((0, collection_utils_1.iterableFirst)(nonNulls));
+                const tt = defined(iterableFirst(nonNulls));
                 return !this.isCycleBreakerType(tt);
             }
         }
@@ -598,10 +594,10 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         ];
     }
     lookupGlobalName(type) {
-        return (0, Support_1.defined)(this._generatedGlobalNames.get(type));
+        return defined(this._generatedGlobalNames.get(type));
     }
     lookupMemberName(type) {
-        return (0, Support_1.defined)(this._generatedMemberNames.get(type));
+        return defined(this._generatedMemberNames.get(type));
     }
     addGlobalName(type) {
         const genName = this._namedTypeNameStyle(GlobalNames[type]);
@@ -612,10 +608,10 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         this._generatedMemberNames.set(type, this._memberNameStyle(MemberNames[type]));
     }
     setupGlobalNames() {
-        for (const v of (0, Support_1.numberEnumValues)(GlobalNames)) {
+        for (const v of numberEnumValues(GlobalNames)) {
             this.addGlobalName(v);
         }
-        for (const v of (0, Support_1.numberEnumValues)(MemberNames)) {
+        for (const v of numberEnumValues(MemberNames)) {
             this.addMemberName(v);
         }
     }
@@ -629,7 +625,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return { names: [], includeGlobalForbidden: true };
     }
     makeNamedTypeNamer() {
-        return (0, Naming_1.funPrefixNamer)("types", this._namedTypeNameStyle);
+        return funPrefixNamer("types", this._namedTypeNameStyle);
     }
     namerForObjectProperty() {
         return this._memberNamingFunction;
@@ -638,12 +634,12 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return null;
     }
     makeEnumCaseNamer() {
-        return (0, Naming_1.funPrefixNamer)("enumerators", (0, Strings_1.makeNameStyle)(this.enumeratorNamingStyle, legalizeName));
+        return funPrefixNamer("enumerators", makeNameStyle(this.enumeratorNamingStyle, legalizeName));
     }
     makeNamesForPropertyGetterAndSetter(_c, _className, _p, _jsonName, name) {
-        const getterName = new Naming_1.DependencyName(this._memberNamingFunction, name.order, lookup => `get_${lookup(name)}`);
-        const mutableGetterName = new Naming_1.DependencyName(this._memberNamingFunction, name.order, lookup => `getMutable_${lookup(name)}`);
-        const setterName = new Naming_1.DependencyName(this._memberNamingFunction, name.order, lookup => `set_${lookup(name)}`);
+        const getterName = new DependencyName(this._memberNamingFunction, name.order, lookup => `get_${lookup(name)}`);
+        const mutableGetterName = new DependencyName(this._memberNamingFunction, name.order, lookup => `getMutable_${lookup(name)}`);
+        const setterName = new DependencyName(this._memberNamingFunction, name.order, lookup => `set_${lookup(name)}`);
         return [getterName, mutableGetterName, setterName];
     }
     makePropertyDependencyNames(c, className, p, jsonName, name) {
@@ -663,7 +659,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         this.emitLine("#include ", global ? "<" : '"', name, global ? ">" : '"');
     }
     startFile(basename, includeHelper = true) {
-        (0, Support_1.assert)(this._currentFilename === undefined, "Previous file wasn't finished");
+        assert(this._currentFilename === undefined, "Previous file wasn't finished");
         if (basename !== undefined) {
             this._currentFilename = this.sourcelikeToString(basename);
         }
@@ -731,7 +727,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         this.ensureBlankLine();
     }
     finishFile() {
-        super.finishFile((0, Support_1.defined)(this._currentFilename));
+        super.finishFile(defined(this._currentFilename));
         this._currentFilename = undefined;
     }
     get needsTypeDeclarationBeforeUse() {
@@ -762,7 +758,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         }
     }
     emitNamespaces(namespaceNames, f) {
-        const namesArray = (0, collection_utils_1.toReadonlyArray)(namespaceNames);
+        const namesArray = toReadonlyArray(namespaceNames);
         const first = namesArray[0];
         if (first === undefined) {
             f();
@@ -773,7 +769,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     }
     cppTypeInOptional(nonNulls, ctx, withIssues, forceNarrowString) {
         if (nonNulls.size === 1) {
-            return this.cppType((0, Support_1.defined)((0, collection_utils_1.iterableFirst)(nonNulls)), ctx, withIssues, forceNarrowString, false);
+            return this.cppType(defined(iterableFirst(nonNulls)), ctx, withIssues, forceNarrowString, false);
         }
         const typeList = [];
         for (const t of nonNulls) {
@@ -789,8 +785,8 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return [this._variantType, "<", typeList, ">"];
     }
     variantType(u, inJsonNamespace) {
-        const [maybeNull, nonNulls] = (0, TypeUtils_1.removeNullFromUnion)(u, true);
-        (0, Support_1.assert)(nonNulls.size >= 2, "Variant not needed for less than two types.");
+        const [maybeNull, nonNulls] = removeNullFromUnion(u, true);
+        assert(nonNulls.size >= 2, "Variant not needed for less than two types.");
         const indirection = maybeNull !== null;
         const variant = this.cppTypeInOptional(nonNulls, {
             needsForwardIndirection: !indirection,
@@ -803,7 +799,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return [this.optionalType(u), "<", variant, ">"];
     }
     ourQualifier(inJsonNamespace) {
-        return inJsonNamespace ? [(0, collection_utils_1.arrayIntercalate)("::", this._namespaceNames), "::"] : [];
+        return inJsonNamespace ? [arrayIntercalate("::", this._namespaceNames), "::"] : [];
     }
     jsonQualifier(inJsonNamespace) {
         return inJsonNamespace ? [] : "nlohmann::";
@@ -815,7 +811,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     }
     cppType(t, ctx, withIssues, forceNarrowString, isOptional) {
         const inJsonNamespace = ctx.inJsonNamespace;
-        if (isOptional && t instanceof Type_1.UnionType) {
+        if (isOptional && t instanceof UnionType) {
             // avoid have optionalType<optionalType<Type>>
             for (const tChild of t.getChildren()) {
                 if (tChild.isNullable) {
@@ -824,15 +820,15 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 }
             }
         }
-        const typeSource = (0, TypeUtils_1.matchType)(t, _anyType => {
+        const typeSource = matchType(t, _anyType => {
             isOptional = false;
-            return (0, Source_1.maybeAnnotated)(withIssues, Annotation_1.anyTypeIssueAnnotation, [
+            return maybeAnnotated(withIssues, anyTypeIssueAnnotation, [
                 this.jsonQualifier(inJsonNamespace),
                 "json"
             ]);
         }, _nullType => {
             isOptional = false;
-            return (0, Source_1.maybeAnnotated)(withIssues, Annotation_1.nullTypeIssueAnnotation, [
+            return maybeAnnotated(withIssues, nullTypeIssueAnnotation, [
                 this.jsonQualifier(inJsonNamespace),
                 "json"
             ]);
@@ -868,7 +864,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 ">"
             ];
         }, enumType => [this.ourQualifier(inJsonNamespace), this.nameForNamedType(enumType)], unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null) {
                 isOptional = true;
                 return this.cppType(nullable, {
@@ -892,10 +888,10 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     generatedTypes(isClassMember, theType) {
         const result = [];
         const recur = (forceInclude, isVariant, l, t) => {
-            if (t instanceof Type_1.ArrayType) {
+            if (t instanceof ArrayType) {
                 recur(true, isVariant, l + 1, t.items);
             }
-            else if (t instanceof Type_1.ClassType) {
+            else if (t instanceof ClassType) {
                 result.push({
                     name: this.nameForNamedType(t),
                     type: t,
@@ -904,10 +900,10 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                     forceInclude
                 });
             }
-            else if (t instanceof Type_1.MapType) {
+            else if (t instanceof MapType) {
                 recur(true, isVariant, l + 1, t.values);
             }
-            else if (t instanceof Type_1.EnumType) {
+            else if (t instanceof EnumType) {
                 result.push({
                     name: this.nameForNamedType(t),
                     type: t,
@@ -916,7 +912,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                     forceInclude: false
                 });
             }
-            else if (t instanceof Type_1.UnionType) {
+            else if (t instanceof UnionType) {
                 /**
                  * If we have a union as a class member and we see it as a "named union",
                  * we can safely include it as-is.
@@ -942,7 +938,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                     });
                     /** intentional "fall-through", add all subtypes as well - but forced include */
                 }
-                const [hasNull, nonNulls] = (0, TypeUtils_1.removeNullFromUnion)(t);
+                const [hasNull, nonNulls] = removeNullFromUnion(t);
                 isVariant = hasNull !== null;
                 /** we need to collect all the subtypes of the union */
                 for (const tt of nonNulls) {
@@ -987,7 +983,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 }, true, false, property.isOptional), name);
             }
             else {
-                const [getterName, mutableGetterName, setterName] = (0, Support_1.defined)(this._gettersAndSettersForPropertyName.get(name));
+                const [getterName, mutableGetterName, setterName] = defined(this._gettersAndSettersForPropertyName.get(name));
                 const rendered = this.cppType(property.type, {
                     needsForwardIndirection: true,
                     needsOptionalIndirection: true,
@@ -999,7 +995,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                  * a member called 'value' value = value will screw up the compiler
                  */
                 const checkConst = this.lookupGlobalName(GlobalNames.CheckConstraint);
-                if ((property.type instanceof Type_1.UnionType && property.type.findMember("null") !== undefined) ||
+                if ((property.type instanceof UnionType && property.type.findMember("null") !== undefined) ||
                     (property.isOptional && property.type.kind !== "null" && property.type.kind !== "any")) {
                     this.emitLine(rendered, " ", getterName, "() const { return ", name, "; }");
                     if (constraints === null || constraints === void 0 ? void 0 : constraints.has(jsonName)) {
@@ -1056,7 +1052,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                     : [
                         this._stringType.getType(),
                         "(",
-                        this._stringType.createStringLiteral([(0, Strings_1.stringEscape)(pattern)]),
+                        this._stringType.createStringLiteral([stringEscape(pattern)]),
                         ")"
                     ],
                 ")"
@@ -1097,7 +1093,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     }
     emitTopLevelHeaders(t, className) {
         // Forward declarations for std::map<std::wstring, Key> (need to convert UTF16 <-> UTF8)
-        if (t instanceof Type_1.MapType && this._stringType !== this.NarrowString) {
+        if (t instanceof MapType && this._stringType !== this.NarrowString) {
             const ourQualifier = this.ourQualifier(true);
             this.emitBlock(["struct adl_serializer<", ourQualifier, className, ">"], true, () => {
                 this.emitLine("template <>");
@@ -1113,7 +1109,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     }
     emitTopLevelFunction(t, className) {
         // Function definitions for std::map<std::wstring, Key> (need to convert UTF16 <-> UTF8)
-        if (t instanceof Type_1.MapType && this._stringType !== this.NarrowString) {
+        if (t instanceof MapType && this._stringType !== this.NarrowString) {
             const ourQualifier = this.ourQualifier(true);
             let cppType;
             let toType;
@@ -1180,7 +1176,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         let toType;
         this.emitBlock(["inline void from_json(", this.withConst("json"), " & j, ", ourQualifier, className, "& x)"], false, () => {
             this.forEachClassProperty(c, "none", (name, json, p) => {
-                const [, , setterName] = (0, Support_1.defined)(this._gettersAndSettersForPropertyName.get(name));
+                const [, , setterName] = defined(this._gettersAndSettersForPropertyName.get(name));
                 const propType = p.type;
                 let assignment;
                 if (this._options.codeFormat) {
@@ -1193,15 +1189,15 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                     this.emitLine(assignment.wrap([], [
                         ourQualifier,
                         "get_untyped(j, ",
-                        this._stringType.wrapEncodingChange([ourQualifier], this._stringType.getType(), this.NarrowString.getType(), [this._stringType.createStringLiteral([(0, Strings_1.stringEscape)(json)])]),
+                        this._stringType.wrapEncodingChange([ourQualifier], this._stringType.getType(), this.NarrowString.getType(), [this._stringType.createStringLiteral([stringEscape(json)])]),
                         ")"
                     ]), ";");
                     return;
                 }
-                if (p.isOptional || propType instanceof Type_1.UnionType) {
+                if (p.isOptional || propType instanceof UnionType) {
                     const [nullOrOptional, typeSet] = (function () {
-                        if (propType instanceof Type_1.UnionType) {
-                            const [maybeNull, nonNulls] = (0, TypeUtils_1.removeNullFromUnion)(propType, true);
+                        if (propType instanceof UnionType) {
+                            const [maybeNull, nonNulls] = removeNullFromUnion(propType, true);
                             return [maybeNull !== null || p.isOptional, nonNulls];
                         }
                         else {
@@ -1227,7 +1223,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                                 `get_${this.optionalTypeLabel(propType)}_optional<`,
                                 cppType,
                                 ">(j, ",
-                                this._stringType.wrapEncodingChange([ourQualifier], this._stringType.getType(), this.NarrowString.getType(), [this._stringType.createStringLiteral([(0, Strings_1.stringEscape)(json)])]),
+                                this._stringType.wrapEncodingChange([ourQualifier], this._stringType.getType(), this.NarrowString.getType(), [this._stringType.createStringLiteral([stringEscape(json)])]),
                                 ")"
                             ])
                         ]), ";");
@@ -1246,7 +1242,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 }, false, false, p.isOptional);
                 this.emitLine(assignment.wrap([], this._stringType.wrapEncodingChange([ourQualifier], cppType, toType, [
                     "j.at(",
-                    this._stringType.wrapEncodingChange([ourQualifier], this._stringType.getType(), this.NarrowString.getType(), this._stringType.createStringLiteral([(0, Strings_1.stringEscape)(json)])),
+                    this._stringType.wrapEncodingChange([ourQualifier], this._stringType.getType(), this.NarrowString.getType(), this._stringType.createStringLiteral([stringEscape(json)])),
                     ").get<",
                     cppType,
                     ">()"
@@ -1268,7 +1264,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                     needsOptionalIndirection: true,
                     inJsonNamespace: false
                 }, false, true, p.isOptional);
-                const [getterName, ,] = (0, Support_1.defined)(this._gettersAndSettersForPropertyName.get(name));
+                const [getterName, ,] = defined(this._gettersAndSettersForPropertyName.get(name));
                 let getter;
                 if (this._options.codeFormat) {
                     getter = [getterName, "()"];
@@ -1278,7 +1274,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 }
                 const assignment = [
                     "j[",
-                    this._stringType.wrapEncodingChange([ourQualifier], this._stringType.getType(), this.NarrowString.getType(), this._stringType.createStringLiteral([(0, Strings_1.stringEscape)(json)])),
+                    this._stringType.wrapEncodingChange([ourQualifier], this._stringType.getType(), this.NarrowString.getType(), this._stringType.createStringLiteral([stringEscape(json)])),
                     "] = ",
                     this._stringType.wrapEncodingChange([ourQualifier], cppType, toType, ["x.", getter]),
                     ";"
@@ -1300,13 +1296,13 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     }
     emitEnum(e, enumName) {
         const caseNames = [];
-        const enumValues = (0, EnumValues_1.enumCaseValues)(e, this.targetLanguage.name);
+        const enumValues = enumCaseValues(e, this.targetLanguage.name);
         this.forEachEnumCase(e, "none", (name, jsonName) => {
             if (caseNames.length > 0)
                 caseNames.push(", ");
             caseNames.push(name);
             if (enumValues !== undefined) {
-                const [enumValue] = (0, AccessorNames_1.getAccessorName)(enumValues, jsonName);
+                const [enumValue] = getAccessorName(enumValues, jsonName);
                 if (enumValue !== undefined) {
                     caseNames.push(" = ", enumValue.toString());
                 }
@@ -1324,7 +1320,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         // variant type. If at least one of the Ts is our type then we could get away with regular adl definitions,
         // but it's nontrivial to detect that (consider variant<string, variant<map<string, string>, int>> which
         // does need an adl_serializer specialization) so we'll just specialize every time.
-        const nonNulls = (0, TypeUtils_1.removeNullFromUnion)(u, true)[1];
+        const nonNulls = removeNullFromUnion(u, true)[1];
         const variantType = this.cppTypeInOptional(nonNulls, {
             needsForwardIndirection: false,
             needsOptionalIndirection: false,
@@ -1349,7 +1345,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             ["array", "is_array"],
             ["enum", "is_string"]
         ];
-        const nonNulls = (0, TypeUtils_1.removeNullFromUnion)(u, true)[1];
+        const nonNulls = removeNullFromUnion(u, true)[1];
         const variantType = this.cppTypeInOptional(nonNulls, {
             needsForwardIndirection: false,
             needsOptionalIndirection: false,
@@ -1366,7 +1362,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         ], false, () => {
             let onFirst = true;
             for (const [kind, func] of functionForKind) {
-                const typeForKind = (0, collection_utils_1.iterableFind)(nonNulls, t => t.kind === kind);
+                const typeForKind = iterableFind(nonNulls, t => t.kind === kind);
                 if (typeForKind === undefined)
                     continue;
                 this.emitLine(onFirst ? "if" : "else if", " (j.", func, "())");
@@ -1444,7 +1440,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                     "> enumValues"
                 ], true, () => {
                     this.forEachEnumCase(e, "none", (name, jsonName) => {
-                        this.emitLine("{", this._stringType.wrapEncodingChange([ourQualifier], this._stringType.getType(), this.NarrowString.getType(), [this._stringType.createStringLiteral([(0, Strings_1.stringEscape)(jsonName)])]), ", ", ourQualifier, enumName, "::", name, "},");
+                        this.emitLine("{", this._stringType.wrapEncodingChange([ourQualifier], this._stringType.getType(), this.NarrowString.getType(), [this._stringType.createStringLiteral([stringEscape(jsonName)])]), ", ", ourQualifier, enumName, "::", name, "},");
                     });
                 });
                 this.emitLine(`auto iter = enumValues.find(j.get<${this._stringType.getType()}>());`);
@@ -1456,7 +1452,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 let onFirst = true;
                 this.forEachEnumCase(e, "none", (name, jsonName) => {
                     const maybeElse = onFirst ? "" : "else ";
-                    this.emitLine(maybeElse, "if (j == ", this._stringType.wrapEncodingChange([ourQualifier], this._stringType.getType(), this.NarrowString.getType(), [this._stringType.createStringLiteral([(0, Strings_1.stringEscape)(jsonName)])]), ") x = ", ourQualifier, enumName, "::", name, ";");
+                    this.emitLine(maybeElse, "if (j == ", this._stringType.wrapEncodingChange([ourQualifier], this._stringType.getType(), this.NarrowString.getType(), [this._stringType.createStringLiteral([stringEscape(jsonName)])]), ") x = ", ourQualifier, enumName, "::", name, ";");
                     onFirst = false;
                 });
                 this.emitLine('else { throw std::runtime_error("Input JSON does not conform to schema!"); }');
@@ -1466,7 +1462,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         this.emitBlock(["inline void to_json(json & j, ", this.withConst([ourQualifier, enumName]), " & x)"], false, () => {
             this.emitBlock("switch (x)", false, () => {
                 this.forEachEnumCase(e, "none", (name, jsonName) => {
-                    this.emitLine("case ", ourQualifier, enumName, "::", name, ": j = ", this._stringType.wrapEncodingChange([ourQualifier], this._stringType.getType(), this.NarrowString.getType(), [this._stringType.createStringLiteral([(0, Strings_1.stringEscape)(jsonName)])]), "; break;");
+                    this.emitLine("case ", ourQualifier, enumName, "::", name, ": j = ", this._stringType.wrapEncodingChange([ourQualifier], this._stringType.getType(), this.NarrowString.getType(), [this._stringType.createStringLiteral([stringEscape(jsonName)])]), "; break;");
                 });
                 this.emitLine(`default: throw std::runtime_error("Unexpected value in enumeration \\"${enumName}\\": " + std::to_string(static_cast<int>(x)));`);
             });
@@ -1480,14 +1476,14 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         }, true, false, false), ";");
     }
     emitAllUnionFunctions() {
-        this.forEachUniqueUnion("leading-and-interposing", u => this.sourcelikeToString(this.cppTypeInOptional((0, TypeUtils_1.removeNullFromUnion)(u, true)[1], {
+        this.forEachUniqueUnion("leading-and-interposing", u => this.sourcelikeToString(this.cppTypeInOptional(removeNullFromUnion(u, true)[1], {
             needsForwardIndirection: false,
             needsOptionalIndirection: false,
             inJsonNamespace: true
         }, false, false)), (u) => this.emitUnionFunctions(u));
     }
     emitAllUnionHeaders() {
-        this.forEachUniqueUnion("interposing", u => this.sourcelikeToString(this.cppTypeInOptional((0, TypeUtils_1.removeNullFromUnion)(u, true)[1], {
+        this.forEachUniqueUnion("interposing", u => this.sourcelikeToString(this.cppTypeInOptional(removeNullFromUnion(u, true)[1], {
             needsForwardIndirection: false,
             needsOptionalIndirection: false,
             inJsonNamespace: true
@@ -1526,21 +1522,21 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         else if (decl.kind === "define") {
             const type = decl.type;
             const name = this.nameForNamedType(type);
-            if (type instanceof Type_1.ClassType) {
+            if (type instanceof ClassType) {
                 this.emitClass(type, name);
             }
-            else if (type instanceof Type_1.EnumType) {
+            else if (type instanceof EnumType) {
                 this.emitEnum(type, name);
             }
-            else if (type instanceof Type_1.UnionType) {
+            else if (type instanceof UnionType) {
                 this.emitUnionTypedefs(type, name);
             }
             else {
-                (0, Support_1.panic)(`Cannot declare type ${type.kind}`);
+                panic(`Cannot declare type ${type.kind}`);
             }
         }
         else {
-            (0, Support_1.assertNever)(decl.kind);
+            assertNever(decl.kind);
         }
     }
     emitGetterSetter(t, getterName, setterName, memberName) {
@@ -1599,12 +1595,12 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 const member = this.lookupMemberName(name);
                 return [member, "(", member, ")"];
             });
-            this.emitLine(") : ", (0, collection_utils_1.arrayIntercalate)([", "], args), " {}");
+            this.emitLine(") : ", arrayIntercalate([", "], args), " {}");
             this.emitLine(classConstraint, "() = default;");
             this.emitLine("virtual ~", classConstraint, "() = default;");
             for (const member of constraintMembers) {
                 this.ensureBlankLine();
-                this.emitGetterSetter((0, collection_utils_1.withDefault)(member.cppConstType, member.cppType), this.lookupMemberName(member.getter), this.lookupMemberName(member.setter), this.lookupMemberName(member.name));
+                this.emitGetterSetter(withDefault(member.cppConstType, member.cppType), this.lookupMemberName(member.getter), this.lookupMemberName(member.setter), this.lookupMemberName(member.name));
             }
         });
         this.ensureBlankLine();
@@ -1680,7 +1676,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     emitHelperFunctions() {
         this._stringType.emitHelperFunctions();
         if (this._options.codeFormat &&
-            (0, collection_utils_1.iterableSome)(this.typeGraph.allTypesUnordered(), t => constraintsForType(t) !== undefined)) {
+            iterableSome(this.typeGraph.allTypesUnordered(), t => constraintsForType(t) !== undefined)) {
             this.emitConstraintClasses();
             this.ensureBlankLine();
         }
@@ -1885,7 +1881,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         for (const t of propTypes) {
             const typeName = this.sourcelikeToString(t.name);
             const propRecord = { kind: undefined, typeKind: undefined };
-            if (t.type instanceof Type_1.ClassType) {
+            if (t.type instanceof ClassType) {
                 /**
                  * Ok. We can NOT forward declare direct class members, e.g. a class type is included
                  * at level#0. HOWEVER if it is not a direct class member (e.g. std::shared_ptr<Class>),
@@ -1897,14 +1893,14 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                     propRecord.kind = IncludeKind.Include;
                 }
             }
-            else if (t.type instanceof Type_1.EnumType) {
+            else if (t.type instanceof EnumType) {
                 propRecord.typeKind = "enum";
                 propRecord.kind = IncludeKind.ForwardDeclare;
             }
-            else if (t.type instanceof Type_1.UnionType) {
+            else if (t.type instanceof UnionType) {
                 propRecord.typeKind = "union";
                 /** Recurse into the union */
-                const [maybeNull] = (0, TypeUtils_1.removeNullFromUnion)(t.type, true);
+                const [maybeNull] = removeNullFromUnion(t.type, true);
                 if (maybeNull !== undefined) {
                     /** Houston this is a variant, include it */
                     propRecord.kind = IncludeKind.Include;
@@ -1939,10 +1935,10 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
          * are defined by others
          */
         const includes = new Map();
-        if (c instanceof Type_1.UnionType) {
+        if (c instanceof UnionType) {
             this.updateIncludes(false, includes, c, defName);
         }
-        else if (c instanceof Type_1.ClassType) {
+        else if (c instanceof ClassType) {
             this.forEachClassProperty(c, "none", (_name, _jsonName, property) => {
                 this.updateIncludes(true, includes, property.type, defName);
             });
@@ -1988,7 +1984,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                             this.emitLine("enum class ", name, " : ", this._enumType, ";");
                         }
                         else {
-                            (0, Support_1.panic)(`Invalid type "${rec.typeKind}" to forward declare`);
+                            panic(`Invalid type "${rec.typeKind}" to forward declare`);
                         }
                     });
                 });
@@ -2006,13 +2002,13 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             this.ensureBlankLine();
             this.emitLine("using nlohmann::json;");
             this.ensureBlankLine();
-            if (d instanceof Type_1.ClassType) {
+            if (d instanceof ClassType) {
                 this.emitClass(d, defName);
             }
-            else if (d instanceof Type_1.EnumType) {
+            else if (d instanceof EnumType) {
                 this.emitEnum(d, defName);
             }
-            else if (d instanceof Type_1.UnionType) {
+            else if (d instanceof UnionType) {
                 this.emitUnionTypedefs(d, defName);
             }
         });
@@ -2059,8 +2055,8 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         /** Gather all the unique/custom types used by the schema */
         this._allTypeNames.clear();
         this.forEachDeclaration("none", decl => {
-            const definedTypes = (0, TypeUtils_1.directlyReachableTypes)(decl.type, t => {
-                if ((0, TypeUtils_1.isNamedType)(t) && (t instanceof Type_1.ClassType || t instanceof Type_1.EnumType || t instanceof Type_1.UnionType)) {
+            const definedTypes = directlyReachableTypes(decl.type, t => {
+                if (isNamedType(t) && (t instanceof ClassType || t instanceof EnumType || t instanceof UnionType)) {
                     return new Set([
                         this.sourcelikeToString(this.cppType(t, {
                             needsForwardIndirection: false,
@@ -2071,7 +2067,7 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 }
                 return null;
             });
-            this._allTypeNames = (0, collection_utils_1.setUnion)(definedTypes, this._allTypeNames);
+            this._allTypeNames = setUnion(definedTypes, this._allTypeNames);
         });
         if (this._options.typeSourceStyle) {
             this.emitSingleSourceStructure(proposedFilename);
@@ -2094,4 +2090,3 @@ class CPlusPlusRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return originalType !== newType;
     }
 }
-exports.CPlusPlusRenderer = CPlusPlusRenderer;

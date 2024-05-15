@@ -1,7 +1,4 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.sourcesFromPostmanCollection = void 0;
-const Support_1 = require("../support/Support");
+import { parseJSON } from "../support/Support";
 function isValidJSON(s) {
     try {
         JSON.parse(s);
@@ -11,7 +8,7 @@ function isValidJSON(s) {
         return false;
     }
 }
-function sourcesFromPostmanCollection(collectionJSON, collectionJSONAddress) {
+export function sourcesFromPostmanCollection(collectionJSON, collectionJSONAddress) {
     const sources = [];
     const descriptions = [];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -50,7 +47,7 @@ function sourcesFromPostmanCollection(collectionJSON, collectionJSONAddress) {
             }
         }
     }
-    processCollection((0, Support_1.parseJSON)(collectionJSON, "Postman collection", collectionJSONAddress));
+    processCollection(parseJSON(collectionJSON, "Postman collection", collectionJSONAddress));
     const joinedDescription = descriptions.join("\n\n").trim();
     let description = undefined;
     if (joinedDescription !== "") {
@@ -58,4 +55,3 @@ function sourcesFromPostmanCollection(collectionJSON, collectionJSONAddress) {
     }
     return { sources, description };
 }
-exports.sourcesFromPostmanCollection = sourcesFromPostmanCollection;

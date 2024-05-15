@@ -1,29 +1,26 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.Scala3TargetLanguage = exports.CirceRenderer = exports.UpickleRenderer = exports.Scala3Renderer = exports.scala3Options = exports.Framework = void 0;
-const Annotation_1 = require("../Annotation");
-const ConvenienceRenderer_1 = require("../ConvenienceRenderer");
-const Naming_1 = require("../Naming");
-const RendererOptions_1 = require("../RendererOptions");
-const Source_1 = require("../Source");
-const Strings_1 = require("../support/Strings");
-const Support_1 = require("../support/Support");
-const TargetLanguage_1 = require("../TargetLanguage");
-const Type_1 = require("../Type");
-const TypeUtils_1 = require("../TypeUtils");
-var Framework;
+import { anyTypeIssueAnnotation, nullTypeIssueAnnotation } from "../Annotation";
+import { ConvenienceRenderer } from "../ConvenienceRenderer";
+import { funPrefixNamer } from "../Naming";
+import { EnumOption, StringOption, getOptionValues } from "../RendererOptions";
+import { maybeAnnotated } from "../Source";
+import { allLowerWordStyle, allUpperWordStyle, combineWords, firstUpperWordStyle, isDigit, isLetterOrUnderscore, isNumeric, legalizeCharacters, splitIntoWords } from "../support/Strings";
+import { assertNever } from "../support/Support";
+import { TargetLanguage } from "../TargetLanguage";
+import { ArrayType, MapType } from "../Type";
+import { matchType, nullableFromUnion, removeNullFromUnion } from "../TypeUtils";
+export var Framework;
 (function (Framework) {
     Framework["None"] = "None";
     Framework["Upickle"] = "Upickle";
     Framework["Circe"] = "Circe";
-})(Framework = exports.Framework || (exports.Framework = {}));
-exports.scala3Options = {
-    framework: new RendererOptions_1.EnumOption("framework", "Serialization framework", [
+})(Framework || (Framework = {}));
+export const scala3Options = {
+    framework: new EnumOption("framework", "Serialization framework", [
         ["just-types", Framework.None],
         ["circe", Framework.Circe],
         ["upickle", Framework.Upickle]
     ], undefined),
-    packageName: new RendererOptions_1.StringOption("package", "Package", "PACKAGE", "quicktype")
+    packageName: new StringOption("package", "Package", "PACKAGE", "quicktype")
 };
 // Use backticks for param names with symbols
 const invalidSymbols = [
@@ -130,15 +127,15 @@ const wrapOption = (s, optional) => {
     }
 };
 function isPartCharacter(codePoint) {
-    return (0, Strings_1.isLetterOrUnderscore)(codePoint) || (0, Strings_1.isNumeric)(codePoint);
+    return isLetterOrUnderscore(codePoint) || isNumeric(codePoint);
 }
 function isStartCharacter(codePoint) {
-    return isPartCharacter(codePoint) && !(0, Strings_1.isDigit)(codePoint);
+    return isPartCharacter(codePoint) && !isDigit(codePoint);
 }
-const legalizeName = (0, Strings_1.legalizeCharacters)(isPartCharacter);
+const legalizeName = legalizeCharacters(isPartCharacter);
 function scalaNameStyle(isUpper, original) {
-    const words = (0, Strings_1.splitIntoWords)(original);
-    return (0, Strings_1.combineWords)(words, legalizeName, isUpper ? Strings_1.firstUpperWordStyle : Strings_1.allLowerWordStyle, Strings_1.firstUpperWordStyle, isUpper ? Strings_1.allUpperWordStyle : Strings_1.allLowerWordStyle, Strings_1.allUpperWordStyle, "", isStartCharacter);
+    const words = splitIntoWords(original);
+    return combineWords(words, legalizeName, isUpper ? firstUpperWordStyle : allLowerWordStyle, firstUpperWordStyle, isUpper ? allUpperWordStyle : allLowerWordStyle, allUpperWordStyle, "", isStartCharacter);
 }
 /* function unicodeEscape(codePoint: number): string {
     return "\\u" + intToHex(codePoint, 4);
@@ -148,9 +145,9 @@ function scalaNameStyle(isUpper, original) {
     // "$this" is a template string in Kotlin so we have to escape $
     return _stringEscape(s).replace(/\$/g, "\\$");
 } */
-const upperNamingFunction = (0, Naming_1.funPrefixNamer)("upper", s => scalaNameStyle(true, s));
-const lowerNamingFunction = (0, Naming_1.funPrefixNamer)("lower", s => scalaNameStyle(false, s));
-class Scala3Renderer extends ConvenienceRenderer_1.ConvenienceRenderer {
+const upperNamingFunction = funPrefixNamer("upper", s => scalaNameStyle(true, s));
+const lowerNamingFunction = funPrefixNamer("lower", s => scalaNameStyle(false, s));
+export class Scala3Renderer extends ConvenienceRenderer {
     constructor(targetLanguage, renderContext, _scalaOptions) {
         super(targetLanguage, renderContext);
         this._scalaOptions = _scalaOptions;
@@ -177,10 +174,10 @@ class Scala3Renderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return lowerNamingFunction;
     }
     makeUnionMemberNamer() {
-        return (0, Naming_1.funPrefixNamer)("upper", s => scalaNameStyle(true, s) + "Value");
+        return funPrefixNamer("upper", s => scalaNameStyle(true, s) + "Value");
     }
     makeEnumCaseNamer() {
-        return (0, Naming_1.funPrefixNamer)("upper", s => s.replace(" ", "")); // TODO - add backticks where appropriate
+        return funPrefixNamer("upper", s => s.replace(" ", "")); // TODO - add backticks where appropriate
     }
     emitDescriptionBlock(lines) {
         this.emitCommentLines(lines, { lineStart: " * ", beforeComment: "/**", afterComment: " */" });
@@ -209,13 +206,13 @@ class Scala3Renderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return ["Map[String, ", this.scalaType(mapType.values, withIssues), "]"];
     }
     scalaType(t, withIssues = false, noOptional = false) {
-        return (0, TypeUtils_1.matchType)(t, _anyType => {
-            return (0, Source_1.maybeAnnotated)(withIssues, Annotation_1.anyTypeIssueAnnotation, this.anySourceType(!noOptional));
+        return matchType(t, _anyType => {
+            return maybeAnnotated(withIssues, anyTypeIssueAnnotation, this.anySourceType(!noOptional));
         }, _nullType => {
             // return "None.type"
-            return (0, Source_1.maybeAnnotated)(withIssues, Annotation_1.nullTypeIssueAnnotation, this.anySourceType(!noOptional));
+            return maybeAnnotated(withIssues, nullTypeIssueAnnotation, this.anySourceType(!noOptional));
         }, _boolType => "Boolean", _integerType => "Long", _doubleType => "Double", _stringType => "String", arrayType => this.arrayType(arrayType, withIssues), classType => this.nameForNamedType(classType), mapType => this.mapType(mapType, withIssues), enumType => this.nameForNamedType(enumType), unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null) {
                 if (noOptional) {
                     return [this.scalaType(nullable, withIssues)];
@@ -272,7 +269,7 @@ class Scala3Renderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             let count = c.getProperties().size;
             let first = true;
             this.forEachClassProperty(c, "none", (_, jsonName, p) => {
-                const nullable = p.type.kind === "union" && (0, TypeUtils_1.nullableFromUnion)(p.type) !== null;
+                const nullable = p.type.kind === "union" && nullableFromUnion(p.type) !== null;
                 const nullableOrOptional = p.isOptional || p.type.kind === "null" || nullable;
                 const last = --count === 0;
                 const meta = [];
@@ -336,7 +333,7 @@ class Scala3Renderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             return "_" + kind;
         }
         this.emitDescription(this.descriptionForType(u));
-        const [maybeNull, nonNulls] = (0, TypeUtils_1.removeNullFromUnion)(u, sortBy);
+        const [maybeNull, nonNulls] = removeNullFromUnion(u, sortBy);
         const theTypes = [];
         this.forEachUnionMember(u, nonNulls, "none", null, (_, t) => {
             theTypes.push(this.scalaType(t));
@@ -354,18 +351,17 @@ class Scala3Renderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         this.emitHeader();
         // Top-level arrays, maps
         this.forEachTopLevel("leading", (t, name) => {
-            if (t instanceof Type_1.ArrayType) {
+            if (t instanceof ArrayType) {
                 this.emitTopLevelArray(t, name);
             }
-            else if (t instanceof Type_1.MapType) {
+            else if (t instanceof MapType) {
                 this.emitTopLevelMap(t, name);
             }
         });
         this.forEachNamedType("leading-and-interposing", (c, n) => this.emitClassDefinition(c, n), (e, n) => this.emitEnumDefinition(e, n), (u, n) => this.emitUnionDefinition(u, n));
     }
 }
-exports.Scala3Renderer = Scala3Renderer;
-class UpickleRenderer extends Scala3Renderer {
+export class UpickleRenderer extends Scala3Renderer {
     emitClassDefinitionMethods() {
         this.emitLine(") derives ReadWriter ");
     }
@@ -375,15 +371,14 @@ class UpickleRenderer extends Scala3Renderer {
         this.ensureBlankLine();
     }
 }
-exports.UpickleRenderer = UpickleRenderer;
-class CirceRenderer extends Scala3Renderer {
+export class CirceRenderer extends Scala3Renderer {
     constructor() {
         super(...arguments);
         this.seenUnionTypes = [];
     }
     circeEncoderForType(t, __ = false, noOptional = false, paramName = "") {
-        return (0, TypeUtils_1.matchType)(t, _anyType => ["Encoder.encodeJson(", paramName, ")"], _nullType => ["Encoder.encodeNone(", paramName, ")"], _boolType => ["Encoder.encodeBoolean(", paramName, ")"], _integerType => ["Encoder.encodeLong(", paramName, ")"], _doubleType => ["Encoder.encodeDouble(", paramName, ")"], _stringType => ["Encoder.encodeString(", paramName, ")"], arrayType => ["Encoder.encodeSeq[", this.scalaType(arrayType.items), "].apply(", paramName, ")"], classType => ["Encoder.AsObject[", this.scalaType(classType), "].apply(", paramName, ")"], mapType => ["Encoder.encodeMap[String,", this.scalaType(mapType.values), "].apply(", paramName, ")"], _ => ["Encoder.encodeString(", paramName, ")"], unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+        return matchType(t, _anyType => ["Encoder.encodeJson(", paramName, ")"], _nullType => ["Encoder.encodeNone(", paramName, ")"], _boolType => ["Encoder.encodeBoolean(", paramName, ")"], _integerType => ["Encoder.encodeLong(", paramName, ")"], _doubleType => ["Encoder.encodeDouble(", paramName, ")"], _stringType => ["Encoder.encodeString(", paramName, ")"], arrayType => ["Encoder.encodeSeq[", this.scalaType(arrayType.items), "].apply(", paramName, ")"], classType => ["Encoder.AsObject[", this.scalaType(classType), "].apply(", paramName, ")"], mapType => ["Encoder.encodeMap[String,", this.scalaType(mapType.values), "].apply(", paramName, ")"], _ => ["Encoder.encodeString(", paramName, ")"], unionType => {
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null) {
                 if (noOptional) {
                     return ["Encoder.AsObject[", this.nameForNamedType(nullable), "]"];
@@ -477,7 +472,7 @@ class CirceRenderer extends Scala3Renderer {
             return "_" + kind;
         }
         this.emitDescription(this.descriptionForType(u));
-        const [maybeNull, nonNulls] = (0, TypeUtils_1.removeNullFromUnion)(u, sortBy);
+        const [maybeNull, nonNulls] = removeNullFromUnion(u, sortBy);
         const theTypes = [];
         this.forEachUnionMember(u, nonNulls, "none", null, (_, t) => {
             theTypes.push(this.scalaType(t));
@@ -530,13 +525,12 @@ class CirceRenderer extends Scala3Renderer {
         }
     }
 }
-exports.CirceRenderer = CirceRenderer;
-class Scala3TargetLanguage extends TargetLanguage_1.TargetLanguage {
+export class Scala3TargetLanguage extends TargetLanguage {
     constructor() {
         super("Scala3", ["scala3"], "scala");
     }
     getOptions() {
-        return [exports.scala3Options.framework, exports.scala3Options.packageName];
+        return [scala3Options.framework, scala3Options.packageName];
     }
     get supportsOptionalClassProperties() {
         return true;
@@ -545,7 +539,7 @@ class Scala3TargetLanguage extends TargetLanguage_1.TargetLanguage {
         return true;
     }
     makeRenderer(renderContext, untypedOptionValues) {
-        const options = (0, RendererOptions_1.getOptionValues)(exports.scala3Options, untypedOptionValues);
+        const options = getOptionValues(scala3Options, untypedOptionValues);
         switch (options.framework) {
             case Framework.None:
                 return new Scala3Renderer(this, renderContext, options);
@@ -554,8 +548,7 @@ class Scala3TargetLanguage extends TargetLanguage_1.TargetLanguage {
             case Framework.Circe:
                 return new CirceRenderer(this, renderContext, options);
             default:
-                return (0, Support_1.assertNever)(options.framework);
+                return assertNever(options.framework);
         }
     }
 }
-exports.Scala3TargetLanguage = Scala3TargetLanguage;

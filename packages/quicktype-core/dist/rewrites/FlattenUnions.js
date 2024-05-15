@@ -1,34 +1,31 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.flattenUnions = void 0;
-const collection_utils_1 = require("collection-utils");
-const TypeAttributes_1 = require("../attributes/TypeAttributes");
-const Messages_1 = require("../Messages");
-const Support_1 = require("../support/Support");
-const Type_1 = require("../Type");
-const TypeGraph_1 = require("../TypeGraph");
-const TypeUtils_1 = require("../TypeUtils");
-const UnifyClasses_1 = require("../UnifyClasses");
-function flattenUnions(graph, stringTypeMapping, conflateNumbers, makeObjectTypes, debugPrintReconstitution) {
+import { iterableSome, setFilter } from "collection-utils";
+import { emptyTypeAttributes } from "../attributes/TypeAttributes";
+import { messageAssert } from "../Messages";
+import { assert } from "../support/Support";
+import { IntersectionType, UnionType } from "../Type";
+import { derefTypeRef } from "../TypeGraph";
+import { makeGroupsToFlatten } from "../TypeUtils";
+import { UnifyUnionBuilder, unifyTypes } from "../UnifyClasses";
+export function flattenUnions(graph, stringTypeMapping, conflateNumbers, makeObjectTypes, debugPrintReconstitution) {
     let needsRepeat = false;
     function replace(types, builder, forwardingRef) {
-        const unionBuilder = new UnifyClasses_1.UnifyUnionBuilder(builder, makeObjectTypes, true, trefs => {
-            (0, Support_1.assert)(trefs.length > 0, "Must have at least one type to build union");
-            trefs = trefs.map(tref => builder.reconstituteType((0, TypeGraph_1.derefTypeRef)(tref, graph)));
+        const unionBuilder = new UnifyUnionBuilder(builder, makeObjectTypes, true, trefs => {
+            assert(trefs.length > 0, "Must have at least one type to build union");
+            trefs = trefs.map(tref => builder.reconstituteType(derefTypeRef(tref, graph)));
             if (trefs.length === 1) {
                 return trefs[0];
             }
             needsRepeat = true;
-            return builder.getUnionType(TypeAttributes_1.emptyTypeAttributes, new Set(trefs));
+            return builder.getUnionType(emptyTypeAttributes, new Set(trefs));
         });
-        return (0, UnifyClasses_1.unifyTypes)(types, TypeAttributes_1.emptyTypeAttributes, builder, unionBuilder, conflateNumbers, forwardingRef);
+        return unifyTypes(types, emptyTypeAttributes, builder, unionBuilder, conflateNumbers, forwardingRef);
     }
-    const allUnions = (0, collection_utils_1.setFilter)(graph.allTypesUnordered(), t => t instanceof Type_1.UnionType);
-    const nonCanonicalUnions = (0, collection_utils_1.setFilter)(allUnions, u => !u.isCanonical);
+    const allUnions = setFilter(graph.allTypesUnordered(), t => t instanceof UnionType);
+    const nonCanonicalUnions = setFilter(allUnions, u => !u.isCanonical);
     let foundIntersection = false;
-    const groups = (0, TypeUtils_1.makeGroupsToFlatten)(nonCanonicalUnions, members => {
-        (0, Messages_1.messageAssert)(members.size > 0, "IRNoEmptyUnions", {});
-        if (!(0, collection_utils_1.iterableSome)(members, m => m instanceof Type_1.IntersectionType))
+    const groups = makeGroupsToFlatten(nonCanonicalUnions, members => {
+        messageAssert(members.size > 0, "IRNoEmptyUnions", {});
+        if (!iterableSome(members, m => m instanceof IntersectionType))
             return true;
         // FIXME: This is stupid.  `flattenUnions` returns true when no more union
         // flattening is necessary, but `resolveIntersections` can introduce new
@@ -44,4 +41,3 @@ function flattenUnions(graph, stringTypeMapping, conflateNumbers, makeObjectType
     // console.log(`flattened ${nonCanonicalUnions.size} of ${unions.size} unions`);
     return [graph, !needsRepeat && !foundIntersection];
 }
-exports.flattenUnions = flattenUnions;

@@ -1,27 +1,3 @@
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -31,26 +7,24 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.quicktype = exports.combineRenderResults = exports.quicktypeMultiFileSync = exports.quicktypeMultiFile = exports.defaultInferenceFlags = exports.inferenceFlags = exports.inferenceFlagNames = exports.inferenceFlagsObject = exports.getTargetLanguage = void 0;
-const collection_utils_1 = require("collection-utils");
-const TypeNames_1 = require("./attributes/TypeNames");
-const GatherNames_1 = require("./GatherNames");
-const Inputs_1 = require("./input/Inputs");
-const targetLanguages = __importStar(require("./language/All"));
-const MakeTransformations_1 = require("./MakeTransformations");
-const Messages_1 = require("./Messages");
-const CombineClasses_1 = require("./rewrites/CombineClasses");
-const ExpandStrings_1 = require("./rewrites/ExpandStrings");
-const FlattenStrings_1 = require("./rewrites/FlattenStrings");
-const FlattenUnions_1 = require("./rewrites/FlattenUnions");
-const InferMaps_1 = require("./rewrites/InferMaps");
-const ReplaceObjectType_1 = require("./rewrites/ReplaceObjectType");
-const ResolveIntersections_1 = require("./rewrites/ResolveIntersections");
-const Support_1 = require("./support/Support");
-const TypeBuilder_1 = require("./TypeBuilder");
-const TypeGraph_1 = require("./TypeGraph");
-function getTargetLanguage(nameOrInstance) {
+import { mapFirst } from "collection-utils";
+import { initTypeNames } from "./attributes/TypeNames";
+import { gatherNames } from "./GatherNames";
+import { InputData } from "./input/Inputs";
+import * as targetLanguages from "./language/All";
+import { makeTransformations } from "./MakeTransformations";
+import { messageError } from "./Messages";
+import { combineClasses } from "./rewrites/CombineClasses";
+import { expandStrings } from "./rewrites/ExpandStrings";
+import { flattenStrings } from "./rewrites/FlattenStrings";
+import { flattenUnions } from "./rewrites/FlattenUnions";
+import { inferMaps } from "./rewrites/InferMaps";
+import { replaceObjectType } from "./rewrites/ReplaceObjectType";
+import { resolveIntersections } from "./rewrites/ResolveIntersections";
+import { assert } from "./support/Support";
+import { TypeBuilder } from "./TypeBuilder";
+import { noneToAny, optionalToNullable, removeIndirectionIntersections } from "./TypeGraph";
+export function getTargetLanguage(nameOrInstance) {
     if (typeof nameOrInstance === "object") {
         return nameOrInstance;
     }
@@ -58,10 +32,9 @@ function getTargetLanguage(nameOrInstance) {
     if (language !== undefined) {
         return language;
     }
-    return (0, Messages_1.messageError)("DriverUnknownOutputLanguage", { lang: nameOrInstance });
+    return messageError("DriverUnknownOutputLanguage", { lang: nameOrInstance });
 }
-exports.getTargetLanguage = getTargetLanguage;
-exports.inferenceFlagsObject = {
+export const inferenceFlagsObject = {
     /** Whether to infer map types from JSON data */
     inferMaps: {
         description: "Detect maps",
@@ -123,11 +96,11 @@ exports.inferenceFlagsObject = {
         order: 8
     }
 };
-exports.inferenceFlagNames = Object.getOwnPropertyNames(exports.inferenceFlagsObject);
-exports.inferenceFlags = exports.inferenceFlagsObject;
+export const inferenceFlagNames = Object.getOwnPropertyNames(inferenceFlagsObject);
+export const inferenceFlags = inferenceFlagsObject;
 const defaultOptions = {
     lang: "ts",
-    inputData: new Inputs_1.InputData(),
+    inputData: new InputData(),
     alphabetizeProperties: false,
     allPropertiesOptional: false,
     fixedTopLevels: false,
@@ -146,17 +119,17 @@ const defaultOptions = {
 };
 function makeDefaultInferenceFlags() {
     const flags = {};
-    for (const flag of exports.inferenceFlagNames) {
+    for (const flag of inferenceFlagNames) {
         flags[flag] = true;
     }
     return flags;
 }
-exports.defaultInferenceFlags = makeDefaultInferenceFlags();
+export const defaultInferenceFlags = makeDefaultInferenceFlags();
 class Run {
     constructor(options) {
         // We must not overwrite defaults with undefined values, which
         // we sometimes get.
-        this._options = Object.assign({}, defaultOptions, exports.defaultInferenceFlags);
+        this._options = Object.assign({}, defaultOptions, defaultInferenceFlags);
         for (const k of Object.getOwnPropertyNames(options)) {
             const v = options[k];
             if (v !== undefined) {
@@ -167,8 +140,8 @@ class Run {
     get stringTypeMapping() {
         const targetLanguage = getTargetLanguage(this._options.lang);
         const mapping = new Map(targetLanguage.stringTypeMapping);
-        for (const flag of exports.inferenceFlagNames) {
-            const stringType = exports.inferenceFlags[flag].stringType;
+        for (const flag of inferenceFlagNames) {
+            const stringType = inferenceFlags[flag].stringType;
             if (!this._options[flag] && stringType !== undefined) {
                 mapping.set(stringType, "string");
             }
@@ -208,7 +181,7 @@ class Run {
         const targetLanguage = getTargetLanguage(this._options.lang);
         const stringTypeMapping = this.stringTypeMapping;
         const conflateNumbers = !targetLanguage.supportsUnionsWithBothNumberTypes;
-        const typeBuilder = new TypeBuilder_1.TypeBuilder(0, stringTypeMapping, this._options.alphabetizeProperties, this._options.allPropertiesOptional, this._options.checkProvenance, false);
+        const typeBuilder = new TypeBuilder(0, stringTypeMapping, this._options.alphabetizeProperties, this._options.allPropertiesOptional, this._options.checkProvenance, false);
         return { targetLanguage, stringTypeMapping, conflateNumbers, typeBuilder };
     }
     makeGraph(allInputs) {
@@ -234,7 +207,7 @@ class Run {
         }
         const debugPrintReconstitution = this.debugPrintReconstitution;
         if (typeBuilder.didAddForwardingIntersection || !this._options.ignoreJsonRefs) {
-            this.time("remove indirection intersections", () => (graph = (0, TypeGraph_1.removeIndirectionIntersections)(graph, stringTypeMapping, debugPrintReconstitution)));
+            this.time("remove indirection intersections", () => (graph = removeIndirectionIntersections(graph, stringTypeMapping, debugPrintReconstitution)));
         }
         let unionsDone = false;
         if (allInputs.needSchemaProcessing || !this._options.ignoreJsonRefs) {
@@ -242,32 +215,32 @@ class Run {
             do {
                 const graphBeforeRewrites = graph;
                 if (!intersectionsDone) {
-                    this.time("resolve intersections", () => ([graph, intersectionsDone] = (0, ResolveIntersections_1.resolveIntersections)(graph, stringTypeMapping, debugPrintReconstitution)));
+                    this.time("resolve intersections", () => ([graph, intersectionsDone] = resolveIntersections(graph, stringTypeMapping, debugPrintReconstitution)));
                 }
                 if (!unionsDone) {
-                    this.time("flatten unions", () => ([graph, unionsDone] = (0, FlattenUnions_1.flattenUnions)(graph, stringTypeMapping, conflateNumbers, true, debugPrintReconstitution)));
+                    this.time("flatten unions", () => ([graph, unionsDone] = flattenUnions(graph, stringTypeMapping, conflateNumbers, true, debugPrintReconstitution)));
                 }
                 if (graph === graphBeforeRewrites) {
-                    (0, Support_1.assert)(intersectionsDone && unionsDone, "Graph didn't change but we're not done");
+                    assert(intersectionsDone && unionsDone, "Graph didn't change but we're not done");
                 }
             } while (!intersectionsDone || !unionsDone);
         }
-        this.time("replace object type", () => (graph = (0, ReplaceObjectType_1.replaceObjectType)(graph, stringTypeMapping, conflateNumbers, targetLanguage.supportsFullObjectType, debugPrintReconstitution)));
+        this.time("replace object type", () => (graph = replaceObjectType(graph, stringTypeMapping, conflateNumbers, targetLanguage.supportsFullObjectType, debugPrintReconstitution)));
         do {
-            this.time("flatten unions", () => ([graph, unionsDone] = (0, FlattenUnions_1.flattenUnions)(graph, stringTypeMapping, conflateNumbers, false, debugPrintReconstitution)));
+            this.time("flatten unions", () => ([graph, unionsDone] = flattenUnions(graph, stringTypeMapping, conflateNumbers, false, debugPrintReconstitution)));
         } while (!unionsDone);
         if (this._options.combineClasses) {
-            const combinedGraph = this.time("combine classes", () => (0, CombineClasses_1.combineClasses)(this, graph, this._options.alphabetizeProperties, true, false, debugPrintReconstitution));
+            const combinedGraph = this.time("combine classes", () => combineClasses(this, graph, this._options.alphabetizeProperties, true, false, debugPrintReconstitution));
             if (combinedGraph === graph) {
                 graph = combinedGraph;
             }
             else {
-                this.time("combine classes cleanup", () => (graph = (0, CombineClasses_1.combineClasses)(this, combinedGraph, this._options.alphabetizeProperties, false, true, debugPrintReconstitution)));
+                this.time("combine classes cleanup", () => (graph = combineClasses(this, combinedGraph, this._options.alphabetizeProperties, false, true, debugPrintReconstitution)));
             }
         }
         if (this._options.inferMaps) {
             for (;;) {
-                const newGraph = this.time("infer maps", () => (0, InferMaps_1.inferMaps)(graph, stringTypeMapping, true, debugPrintReconstitution));
+                const newGraph = this.time("infer maps", () => inferMaps(graph, stringTypeMapping, true, debugPrintReconstitution));
                 if (newGraph === graph) {
                     break;
                 }
@@ -275,20 +248,20 @@ class Run {
             }
         }
         const enumInference = allInputs.needSchemaProcessing ? "all" : this._options.inferEnums ? "infer" : "none";
-        this.time("expand strings", () => (graph = (0, ExpandStrings_1.expandStrings)(this, graph, enumInference)));
-        this.time("flatten unions", () => ([graph, unionsDone] = (0, FlattenUnions_1.flattenUnions)(graph, stringTypeMapping, conflateNumbers, false, debugPrintReconstitution)));
-        (0, Support_1.assert)(unionsDone, "We should only have to flatten unions once after expanding strings");
+        this.time("expand strings", () => (graph = expandStrings(this, graph, enumInference)));
+        this.time("flatten unions", () => ([graph, unionsDone] = flattenUnions(graph, stringTypeMapping, conflateNumbers, false, debugPrintReconstitution)));
+        assert(unionsDone, "We should only have to flatten unions once after expanding strings");
         if (allInputs.needSchemaProcessing) {
-            this.time("flatten strings", () => (graph = (0, FlattenStrings_1.flattenStrings)(graph, stringTypeMapping, debugPrintReconstitution)));
+            this.time("flatten strings", () => (graph = flattenStrings(graph, stringTypeMapping, debugPrintReconstitution)));
         }
-        this.time("none to any", () => (graph = (0, TypeGraph_1.noneToAny)(graph, stringTypeMapping, debugPrintReconstitution)));
+        this.time("none to any", () => (graph = noneToAny(graph, stringTypeMapping, debugPrintReconstitution)));
         if (!targetLanguage.supportsOptionalClassProperties) {
-            this.time("optional to nullable", () => (graph = (0, TypeGraph_1.optionalToNullable)(graph, stringTypeMapping, debugPrintReconstitution)));
+            this.time("optional to nullable", () => (graph = optionalToNullable(graph, stringTypeMapping, debugPrintReconstitution)));
         }
         this.time("fixed point", () => (graph = graph.rewriteFixedPoint(false, debugPrintReconstitution)));
-        this.time("make transformations", () => (graph = (0, MakeTransformations_1.makeTransformations)(this, graph, targetLanguage)));
-        this.time("flatten unions", () => ([graph, unionsDone] = (0, FlattenUnions_1.flattenUnions)(graph, stringTypeMapping, conflateNumbers, false, debugPrintReconstitution)));
-        (0, Support_1.assert)(unionsDone, "We should only have to flatten unions once after making transformations");
+        this.time("make transformations", () => (graph = makeTransformations(this, graph, targetLanguage)));
+        this.time("flatten unions", () => ([graph, unionsDone] = flattenUnions(graph, stringTypeMapping, conflateNumbers, false, debugPrintReconstitution)));
+        assert(unionsDone, "We should only have to flatten unions once after making transformations");
         // Sometimes we combine classes in ways that will the order come out
         // differently compared to what it would be from the equivalent schema,
         // so we always just garbage collect to get a defined order and be done
@@ -300,7 +273,7 @@ class Run {
         if (this._options.debugPrintGraph) {
             console.log("\n# gather names");
         }
-        this.time("gather names", () => (0, GatherNames_1.gatherNames)(graph, !allInputs.needSchemaProcessing, this._options.debugPrintGatherNames));
+        this.time("gather names", () => gatherNames(graph, !allInputs.needSchemaProcessing, this._options.debugPrintGatherNames));
         if (this._options.debugPrintGraph) {
             graph.printGraph();
         }
@@ -311,7 +284,7 @@ class Run {
     }
     preRun() {
         // FIXME: This makes quicktype not quite reentrant
-        (0, TypeNames_1.initTypeNames)();
+        initTypeNames();
         const targetLanguage = getTargetLanguage(this._options.lang);
         const inputData = this._options.inputData;
         const needIR = inputData.needIR || !targetLanguage.names.includes("schema");
@@ -357,16 +330,14 @@ class Run {
  * @param options Partial options.  For options that are not defined, the
  * defaults will be used.
  */
-function quicktypeMultiFile(options) {
+export function quicktypeMultiFile(options) {
     return __awaiter(this, void 0, void 0, function* () {
         return yield new Run(options).run();
     });
 }
-exports.quicktypeMultiFile = quicktypeMultiFile;
-function quicktypeMultiFileSync(options) {
+export function quicktypeMultiFileSync(options) {
     return new Run(options).runSync();
 }
-exports.quicktypeMultiFileSync = quicktypeMultiFileSync;
 function offsetLocation(loc, lineOffset) {
     return { line: loc.line + lineOffset, column: loc.column };
 }
@@ -378,9 +349,9 @@ function offsetSpan(span, lineOffset) {
  * are concatenated and prefixed with a `//`-style comment giving the
  * filename.
  */
-function combineRenderResults(result) {
+export function combineRenderResults(result) {
     if (result.size <= 1) {
-        const first = (0, collection_utils_1.mapFirst)(result);
+        const first = mapFirst(result);
         if (first === undefined) {
             return { lines: [], annotations: [] };
         }
@@ -395,7 +366,6 @@ function combineRenderResults(result) {
     }
     return { lines, annotations };
 }
-exports.combineRenderResults = combineRenderResults;
 /**
  * Run quicktype like `quicktypeMultiFile`, but if there are multiple
  * output files they will all be squashed into one output, with comments at the
@@ -404,10 +374,9 @@ exports.combineRenderResults = combineRenderResults;
  * @param options Partial options.  For options that are not defined, the
  * defaults will be used.
  */
-function quicktype(options) {
+export function quicktype(options) {
     return __awaiter(this, void 0, void 0, function* () {
         const result = yield quicktypeMultiFile(options);
         return combineRenderResults(result);
     });
 }
-exports.quicktype = quicktype;

@@ -1,17 +1,14 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.JSONSchemaRenderer = exports.JSONSchemaTargetLanguage = void 0;
-const collection_utils_1 = require("collection-utils");
-const Description_1 = require("../attributes/Description");
-const ConvenienceRenderer_1 = require("../ConvenienceRenderer");
-const Naming_1 = require("../Naming");
-const Strings_1 = require("../support/Strings");
-const Support_1 = require("../support/Support");
-const TargetLanguage_1 = require("../TargetLanguage");
-const Type_1 = require("../Type");
-const TypeBuilder_1 = require("../TypeBuilder");
-const TypeUtils_1 = require("../TypeUtils");
-class JSONSchemaTargetLanguage extends TargetLanguage_1.TargetLanguage {
+import { iterableFirst, mapFirst } from "collection-utils";
+import { addDescriptionToSchema } from "../attributes/Description";
+import { ConvenienceRenderer } from "../ConvenienceRenderer";
+import { funPrefixNamer } from "../Naming";
+import { allUpperWordStyle, combineWords, firstUpperWordStyle, legalizeCharacters, splitIntoWords } from "../support/Strings";
+import { defined, panic } from "../support/Support";
+import { TargetLanguage } from "../TargetLanguage";
+import { transformedStringTypeTargetTypeKindsMap } from "../Type";
+import { getNoStringTypeMapping } from "../TypeBuilder";
+import { matchTypeExhaustive } from "../TypeUtils";
+export class JSONSchemaTargetLanguage extends TargetLanguage {
     constructor() {
         super("JSON Schema", ["schema", "json-schema"], "schema");
     }
@@ -19,7 +16,7 @@ class JSONSchemaTargetLanguage extends TargetLanguage_1.TargetLanguage {
         return [];
     }
     get stringTypeMapping() {
-        return (0, TypeBuilder_1.getNoStringTypeMapping)();
+        return getNoStringTypeMapping();
     }
     get supportsOptionalClassProperties() {
         return true;
@@ -31,14 +28,13 @@ class JSONSchemaTargetLanguage extends TargetLanguage_1.TargetLanguage {
         return new JSONSchemaRenderer(this, renderContext);
     }
 }
-exports.JSONSchemaTargetLanguage = JSONSchemaTargetLanguage;
-const namingFunction = (0, Naming_1.funPrefixNamer)("namer", jsonNameStyle);
-const legalizeName = (0, Strings_1.legalizeCharacters)(cp => cp >= 32 && cp < 128 && cp !== 0x2f /* slash */);
+const namingFunction = funPrefixNamer("namer", jsonNameStyle);
+const legalizeName = legalizeCharacters(cp => cp >= 32 && cp < 128 && cp !== 0x2f /* slash */);
 function jsonNameStyle(original) {
-    const words = (0, Strings_1.splitIntoWords)(original);
-    return (0, Strings_1.combineWords)(words, legalizeName, Strings_1.firstUpperWordStyle, Strings_1.firstUpperWordStyle, Strings_1.allUpperWordStyle, Strings_1.allUpperWordStyle, "", _ => true);
+    const words = splitIntoWords(original);
+    return combineWords(words, legalizeName, firstUpperWordStyle, firstUpperWordStyle, allUpperWordStyle, allUpperWordStyle, "", _ => true);
 }
-class JSONSchemaRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
+export class JSONSchemaRenderer extends ConvenienceRenderer {
     makeNamedTypeNamer() {
         return namingFunction;
     }
@@ -52,12 +48,12 @@ class JSONSchemaRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return null;
     }
     nameForType(t) {
-        return (0, Support_1.defined)(this.names.get(this.nameForNamedType(t)));
+        return defined(this.names.get(this.nameForNamedType(t)));
     }
     makeOneOf(types) {
-        const first = (0, collection_utils_1.iterableFirst)(types);
+        const first = iterableFirst(types);
         if (first === undefined) {
-            return (0, Support_1.panic)("Must have at least one type for oneOf");
+            return panic("Must have at least one type for oneOf");
         }
         if (types.size === 1) {
             return this.schemaForType(first);
@@ -74,8 +70,8 @@ class JSONSchemaRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         }
     }
     schemaForType(t) {
-        const schema = (0, TypeUtils_1.matchTypeExhaustive)(t, _noneType => {
-            return (0, Support_1.panic)("none type should have been replaced");
+        const schema = matchTypeExhaustive(t, _noneType => {
+            return panic("none type should have been replaced");
         }, _anyType => ({}), _nullType => ({ type: "null" }), _boolType => ({ type: "boolean" }), _integerType => ({ type: "integer" }), _doubleType => ({ type: "number" }), _stringType => ({ type: "string" }), arrayType => ({ type: "array", items: this.schemaForType(arrayType.items) }), classType => this.makeRef(classType), mapType => this.definitionForObject(mapType, undefined), objectType => this.makeRef(objectType), enumType => this.makeRef(enumType), unionType => {
             if (this.unionNeedsName(unionType)) {
                 return this.makeRef(unionType);
@@ -84,9 +80,9 @@ class JSONSchemaRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 return this.definitionForUnion(unionType);
             }
         }, transformedStringType => {
-            const target = Type_1.transformedStringTypeTargetTypeKindsMap.get(transformedStringType.kind);
+            const target = transformedStringTypeTargetTypeKindsMap.get(transformedStringType.kind);
             if (target === undefined) {
-                return (0, Support_1.panic)(`Unknown transformed string type ${transformedStringType.kind}`);
+                return panic(`Unknown transformed string type ${transformedStringType.kind}`);
             }
             return { type: "string", format: target.jsonSchema };
         });
@@ -108,7 +104,7 @@ class JSONSchemaRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             for (const [name, p] of o.getProperties()) {
                 const prop = this.schemaForType(p.type);
                 if (prop.description === undefined) {
-                    (0, Description_1.addDescriptionToSchema)(prop, this.descriptionForClassProperty(o, name));
+                    addDescriptionToSchema(prop, this.descriptionForClassProperty(o, name));
                 }
                 props[name] = prop;
                 if (!p.isOptional) {
@@ -145,25 +141,24 @@ class JSONSchemaRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     }
     emitSourceStructure() {
         // FIXME: Find a good way to do multiple top-levels.  Maybe multiple files?
-        const topLevelType = this.topLevels.size === 1 ? this.schemaForType((0, Support_1.defined)((0, collection_utils_1.mapFirst)(this.topLevels))) : {};
+        const topLevelType = this.topLevels.size === 1 ? this.schemaForType(defined(mapFirst(this.topLevels))) : {};
         const schema = Object.assign({ $schema: "http://json-schema.org/draft-06/schema#" }, topLevelType);
         const definitions = {};
         this.forEachObject("none", (o, name) => {
-            const title = (0, Support_1.defined)(this.names.get(name));
+            const title = defined(this.names.get(name));
             definitions[title] = this.definitionForObject(o, title);
         });
         this.forEachUnion("none", (u, name) => {
             if (!this.unionNeedsName(u))
                 return;
-            const title = (0, Support_1.defined)(this.names.get(name));
+            const title = defined(this.names.get(name));
             definitions[title] = this.definitionForUnion(u, title);
         });
         this.forEachEnum("none", (e, name) => {
-            const title = (0, Support_1.defined)(this.names.get(name));
+            const title = defined(this.names.get(name));
             definitions[title] = this.definitionForEnum(e, title);
         });
         schema.definitions = definitions;
         this.emitMultiline(JSON.stringify(schema, undefined, "    "));
     }
 }
-exports.JSONSchemaRenderer = JSONSchemaRenderer;

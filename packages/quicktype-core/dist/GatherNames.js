@@ -1,36 +1,10 @@
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.gatherNames = void 0;
-const collection_utils_1 = require("collection-utils");
-const pluralize = __importStar(require("pluralize"));
-const TypeNames_1 = require("./attributes/TypeNames");
-const Support_1 = require("./support/Support");
-const Transformers_1 = require("./Transformers");
-const Type_1 = require("./Type");
-const TypeUtils_1 = require("./TypeUtils");
+import { setMap, setSortBy, setUnion } from "collection-utils";
+import * as pluralize from "pluralize";
+import { TooManyTypeNames, TypeNames, namesTypeAttributeKind, tooManyNamesThreshold } from "./attributes/TypeNames";
+import { assert, defined, panic } from "./support/Support";
+import { transformationForType } from "./Transformers";
+import { ObjectType } from "./Type";
+import { matchCompoundType, nullableFromUnion } from "./TypeUtils";
 class UniqueQueue {
     constructor() {
         this._present = new Set();
@@ -50,10 +24,10 @@ class UniqueQueue {
         this._present.add(v);
     }
     unshift() {
-        (0, Support_1.assert)(!this.isEmpty, "Trying to unshift from an empty queue");
+        assert(!this.isEmpty, "Trying to unshift from an empty queue");
         const v = this._queue[this._front];
         if (v === undefined) {
-            return (0, Support_1.panic)("Value should have been present in queue");
+            return panic("Value should have been present in queue");
         }
         this._queue[this._front] = undefined;
         this._front += 1;
@@ -100,9 +74,9 @@ class UniqueQueue {
 // 4. For each type, set its inferred names to what we gathered in
 //    step 1, and its alternatives to a union of its direct and ancestor
 //    alternatives, gathered in steps 2 and 3.
-function gatherNames(graph, destructive, debugPrint) {
+export function gatherNames(graph, destructive, debugPrint) {
     function setNames(t, tn) {
-        graph.attributeStore.set(TypeNames_1.namesTypeAttributeKind, t, tn);
+        graph.attributeStore.set(namesTypeAttributeKind, t, tn);
     }
     if (destructive) {
         for (const t of graph.allTypesUnordered()) {
@@ -133,13 +107,13 @@ function gatherNames(graph, destructive, debugPrint) {
             newNames = null;
         }
         else {
-            newNames = (0, collection_utils_1.setUnion)(oldNames, names);
+            newNames = setUnion(oldNames, names);
         }
-        if (newNames !== null && newNames.size >= TypeNames_1.tooManyNamesThreshold) {
+        if (newNames !== null && newNames.size >= tooManyNamesThreshold) {
             newNames = null;
         }
         namesForType.set(t, newNames);
-        const transformation = (0, Transformers_1.transformationForType)(t);
+        const transformation = transformationForType(t);
         if (transformation !== undefined) {
             addNames(transformation.targetType, names);
         }
@@ -158,22 +132,22 @@ function gatherNames(graph, destructive, debugPrint) {
     }
     while (!queue.isEmpty) {
         const t = queue.unshift();
-        const names = (0, Support_1.defined)(namesForType.get(t));
-        if (t instanceof Type_1.ObjectType) {
+        const names = defined(namesForType.get(t));
+        if (t instanceof ObjectType) {
             const properties = t.getSortedProperties();
             for (const [propertyName, property] of properties) {
                 addNames(property.type, new Set([propertyName]));
             }
             const values = t.getAdditionalProperties();
             if (values !== undefined) {
-                addNames(values, names === null ? null : (0, collection_utils_1.setMap)(names, pluralize.singular));
+                addNames(values, names === null ? null : setMap(names, pluralize.singular));
             }
         }
         else {
-            (0, TypeUtils_1.matchCompoundType)(t, arrayType => {
-                addNames(arrayType.items, names === null ? null : (0, collection_utils_1.setMap)(names, pluralize.singular));
-            }, _classType => (0, Support_1.panic)("We handled this above"), _mapType => (0, Support_1.panic)("We handled this above"), _objectType => (0, Support_1.panic)("We handled this above"), unionType => {
-                const members = (0, collection_utils_1.setSortBy)(unionType.members, member => member.kind);
+            matchCompoundType(t, arrayType => {
+                addNames(arrayType.items, names === null ? null : setMap(names, pluralize.singular));
+            }, _classType => panic("We handled this above"), _mapType => panic("We handled this above"), _objectType => panic("We handled this above"), unionType => {
+                const members = setSortBy(unionType.members, member => member.kind);
                 for (const memberType of members) {
                     addNames(memberType, names);
                 }
@@ -200,14 +174,14 @@ function gatherNames(graph, destructive, debugPrint) {
         if (existing === undefined) {
             existing = new Set();
         }
-        existing = (0, collection_utils_1.setUnion)(existing, alternatives);
-        if (existing.size < TypeNames_1.tooManyNamesThreshold) {
+        existing = setUnion(existing, alternatives);
+        if (existing.size < tooManyNamesThreshold) {
             return existing;
         }
         return null;
     }
     function processType(ancestor, t, alternativeSuffix) {
-        const names = (0, Support_1.defined)(namesForType.get(t));
+        const names = defined(namesForType.get(t));
         let processedEntry = pairsProcessed.get(ancestor);
         if (processedEntry === undefined)
             processedEntry = new Set();
@@ -215,7 +189,7 @@ function gatherNames(graph, destructive, debugPrint) {
             return;
         processedEntry.add(t);
         pairsProcessed.set(ancestor, processedEntry);
-        const transformation = (0, Transformers_1.transformationForType)(t);
+        const transformation = transformationForType(t);
         if (transformation !== undefined) {
             processType(ancestor, transformation.targetType, alternativeSuffix);
         }
@@ -257,7 +231,7 @@ function gatherNames(graph, destructive, debugPrint) {
         if (directAlternatives !== undefined) {
             directAlternativesForType.set(t, directAlternatives);
         }
-        if (t instanceof Type_1.ObjectType) {
+        if (t instanceof ObjectType) {
             const properties = t.getSortedProperties();
             for (const [, property] of properties) {
                 processType(t, property.type, undefined);
@@ -268,12 +242,12 @@ function gatherNames(graph, destructive, debugPrint) {
             }
         }
         else {
-            (0, TypeUtils_1.matchCompoundType)(t, arrayType => {
+            matchCompoundType(t, arrayType => {
                 processType(ancestor, arrayType.items, "element");
-            }, _classType => (0, Support_1.panic)("We handled this above"), _mapType => (0, Support_1.panic)("We handled this above"), _objectType => (0, Support_1.panic)("We handled this above"), unionType => {
-                const members = (0, collection_utils_1.setSortBy)(unionType.members, member => member.kind);
+            }, _classType => panic("We handled this above"), _mapType => panic("We handled this above"), _objectType => panic("We handled this above"), unionType => {
+                const members = setSortBy(unionType.members, member => member.kind);
                 const unionHasGivenName = unionType.hasNames && !unionType.getNames().areInferred;
-                const unionIsAncestor = unionHasGivenName || (0, TypeUtils_1.nullableFromUnion)(unionType) === null;
+                const unionIsAncestor = unionHasGivenName || nullableFromUnion(unionType) === null;
                 const ancestorForMembers = unionIsAncestor ? unionType : ancestor;
                 for (const memberType of members) {
                     processType(ancestorForMembers, memberType, undefined);
@@ -298,7 +272,7 @@ function gatherNames(graph, destructive, debugPrint) {
         if (alternatives === undefined) {
             alternatives = new Set();
         }
-        alternatives = (0, collection_utils_1.setUnion)(alternatives, (0, collection_utils_1.setMap)(names, name => `${name}_${t.kind}`));
+        alternatives = setUnion(alternatives, setMap(names, name => `${name}_${t.kind}`));
         directAlternativesForType.set(t, alternatives);
     }
     for (const t of graph.allTypesUnordered()) {
@@ -307,7 +281,7 @@ function gatherNames(graph, destructive, debugPrint) {
             continue;
         let typeNames;
         if (names === null) {
-            typeNames = new TypeNames_1.TooManyTypeNames(1);
+            typeNames = new TooManyTypeNames(1);
         }
         else {
             const ancestorAlternatives = ancestorAlternativesForType.get(t);
@@ -324,12 +298,11 @@ function gatherNames(graph, destructive, debugPrint) {
                     alternatives = new Set();
                 }
                 if (ancestorAlternatives !== null && ancestorAlternatives !== undefined) {
-                    alternatives = (0, collection_utils_1.setUnion)(alternatives, ancestorAlternatives);
+                    alternatives = setUnion(alternatives, ancestorAlternatives);
                 }
             }
-            typeNames = TypeNames_1.TypeNames.makeWithDistance(names, alternatives, destructive ? 1 : 10);
+            typeNames = TypeNames.makeWithDistance(names, alternatives, destructive ? 1 : 10);
         }
         setNames(t, t.hasNames ? t.getNames().add([typeNames]) : typeNames);
     }
 }
-exports.gatherNames = gatherNames;

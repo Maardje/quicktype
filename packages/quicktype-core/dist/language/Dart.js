@@ -1,46 +1,43 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.DartRenderer = exports.DartTargetLanguage = exports.dartOptions = void 0;
-const Annotation_1 = require("../Annotation");
-const ConvenienceRenderer_1 = require("../ConvenienceRenderer");
-const Naming_1 = require("../Naming");
-const RendererOptions_1 = require("../RendererOptions");
-const Source_1 = require("../Source");
-const Strings_1 = require("../support/Strings");
-const Support_1 = require("../support/Support");
-const TargetLanguage_1 = require("../TargetLanguage");
-const Type_1 = require("../Type");
-const TypeUtils_1 = require("../TypeUtils");
-exports.dartOptions = {
-    nullSafety: new RendererOptions_1.BooleanOption("null-safety", "Null Safety", true),
-    justTypes: new RendererOptions_1.BooleanOption("just-types", "Types only", false),
-    codersInClass: new RendererOptions_1.BooleanOption("coders-in-class", "Put encoder & decoder in Class", false),
-    methodNamesWithMap: new RendererOptions_1.BooleanOption("from-map", "Use method names fromMap() & toMap()", false, "secondary"),
-    requiredProperties: new RendererOptions_1.BooleanOption("required-props", "Make all properties required", false),
-    finalProperties: new RendererOptions_1.BooleanOption("final-props", "Make all properties final", false),
-    generateCopyWith: new RendererOptions_1.BooleanOption("copy-with", "Generate CopyWith method", false),
-    useFreezed: new RendererOptions_1.BooleanOption("use-freezed", "Generate class definitions with @freezed compatibility", false, "secondary"),
-    useHive: new RendererOptions_1.BooleanOption("use-hive", "Generate annotations for Hive type adapters", false, "secondary"),
-    useJsonAnnotation: new RendererOptions_1.BooleanOption("use-json-annotation", "Generate annotations for json_serializable", false, "secondary"),
-    partName: new RendererOptions_1.StringOption("part-name", "Use this name in `part` directive", "NAME", "", "secondary")
+import { anyTypeIssueAnnotation, nullTypeIssueAnnotation } from "../Annotation";
+import { ConvenienceRenderer } from "../ConvenienceRenderer";
+import { DependencyName, funPrefixNamer } from "../Naming";
+import { BooleanOption, StringOption, getOptionValues } from "../RendererOptions";
+import { maybeAnnotated, modifySource } from "../Source";
+import { allLowerWordStyle, allUpperWordStyle, combineWords, decapitalize, escapeNonPrintableMapper, firstUpperWordStyle, isAscii, isDigit, isLetter, isPrintable, snakeCase, splitIntoWords, standardUnicodeHexEscape, utf16ConcatMap, utf16LegalizeCharacters } from "../support/Strings";
+import { defined } from "../support/Support";
+import { TargetLanguage } from "../TargetLanguage";
+import { EnumType } from "../Type";
+import { directlyReachableSingleNamedType, matchType, nullableFromUnion } from "../TypeUtils";
+export const dartOptions = {
+    nullSafety: new BooleanOption("null-safety", "Null Safety", true),
+    justTypes: new BooleanOption("just-types", "Types only", false),
+    codersInClass: new BooleanOption("coders-in-class", "Put encoder & decoder in Class", false),
+    methodNamesWithMap: new BooleanOption("from-map", "Use method names fromMap() & toMap()", false, "secondary"),
+    requiredProperties: new BooleanOption("required-props", "Make all properties required", false),
+    finalProperties: new BooleanOption("final-props", "Make all properties final", false),
+    generateCopyWith: new BooleanOption("copy-with", "Generate CopyWith method", false),
+    useFreezed: new BooleanOption("use-freezed", "Generate class definitions with @freezed compatibility", false, "secondary"),
+    useHive: new BooleanOption("use-hive", "Generate annotations for Hive type adapters", false, "secondary"),
+    useJsonAnnotation: new BooleanOption("use-json-annotation", "Generate annotations for json_serializable", false, "secondary"),
+    partName: new StringOption("part-name", "Use this name in `part` directive", "NAME", "", "secondary")
 };
-class DartTargetLanguage extends TargetLanguage_1.TargetLanguage {
+export class DartTargetLanguage extends TargetLanguage {
     constructor() {
         super("Dart", ["dart"], "dart");
     }
     getOptions() {
         return [
-            exports.dartOptions.nullSafety,
-            exports.dartOptions.justTypes,
-            exports.dartOptions.codersInClass,
-            exports.dartOptions.methodNamesWithMap,
-            exports.dartOptions.requiredProperties,
-            exports.dartOptions.finalProperties,
-            exports.dartOptions.generateCopyWith,
-            exports.dartOptions.useFreezed,
-            exports.dartOptions.useHive,
-            exports.dartOptions.useJsonAnnotation,
-            exports.dartOptions.partName
+            dartOptions.nullSafety,
+            dartOptions.justTypes,
+            dartOptions.codersInClass,
+            dartOptions.methodNamesWithMap,
+            dartOptions.requiredProperties,
+            dartOptions.finalProperties,
+            dartOptions.generateCopyWith,
+            dartOptions.useFreezed,
+            dartOptions.useHive,
+            dartOptions.useJsonAnnotation,
+            dartOptions.partName
         ];
     }
     get supportsUnionsWithBothNumberTypes() {
@@ -53,11 +50,10 @@ class DartTargetLanguage extends TargetLanguage_1.TargetLanguage {
         return mapping;
     }
     makeRenderer(renderContext, untypedOptionValues) {
-        const options = (0, RendererOptions_1.getOptionValues)(exports.dartOptions, untypedOptionValues);
+        const options = getOptionValues(dartOptions, untypedOptionValues);
         return new DartRenderer(this, renderContext, options);
     }
 }
-exports.DartTargetLanguage = DartTargetLanguage;
 const keywords = [
     "abstract",
     "do",
@@ -129,35 +125,35 @@ const keywords = [
     "fromMap",
     "toMap"
 ];
-const typeNamingFunction = (0, Naming_1.funPrefixNamer)("types", n => dartNameStyle(true, false, n));
-const propertyNamingFunction = (0, Naming_1.funPrefixNamer)("properties", n => dartNameStyle(false, false, n));
-const enumCaseNamingFunction = (0, Naming_1.funPrefixNamer)("enum-cases", n => dartNameStyle(true, true, n));
+const typeNamingFunction = funPrefixNamer("types", n => dartNameStyle(true, false, n));
+const propertyNamingFunction = funPrefixNamer("properties", n => dartNameStyle(false, false, n));
+const enumCaseNamingFunction = funPrefixNamer("enum-cases", n => dartNameStyle(true, true, n));
 // Escape the dollar sign, which is used in string interpolation
-const stringEscape = (0, Strings_1.utf16ConcatMap)((0, Strings_1.escapeNonPrintableMapper)(cp => (0, Strings_1.isPrintable)(cp) && cp !== 0x24, Strings_1.standardUnicodeHexEscape));
+const stringEscape = utf16ConcatMap(escapeNonPrintableMapper(cp => isPrintable(cp) && cp !== 0x24, standardUnicodeHexEscape));
 function isStartCharacter(codePoint) {
     if (codePoint === 0x5f)
         return false; // underscore
-    return (0, Strings_1.isAscii)(codePoint) && (0, Strings_1.isLetter)(codePoint);
+    return isAscii(codePoint) && isLetter(codePoint);
 }
 function isPartCharacter(codePoint) {
-    return isStartCharacter(codePoint) || ((0, Strings_1.isAscii)(codePoint) && (0, Strings_1.isDigit)(codePoint));
+    return isStartCharacter(codePoint) || (isAscii(codePoint) && isDigit(codePoint));
 }
-const legalizeName = (0, Strings_1.utf16LegalizeCharacters)(isPartCharacter);
+const legalizeName = utf16LegalizeCharacters(isPartCharacter);
 // FIXME: Handle acronyms consistently.  In particular, that means that
 // we have to use namers to produce the getter and setter names - we can't
 // just capitalize and concatenate.
 // https://stackoverflow.com/questions/8277355/naming-convention-for-upper-case-abbreviations
 function dartNameStyle(startWithUpper, upperUnderscore, original) {
-    const words = (0, Strings_1.splitIntoWords)(original);
+    const words = splitIntoWords(original);
     const firstWordStyle = upperUnderscore
-        ? Strings_1.allUpperWordStyle
+        ? allUpperWordStyle
         : startWithUpper
-            ? Strings_1.firstUpperWordStyle
-            : Strings_1.allLowerWordStyle;
-    const restWordStyle = upperUnderscore ? Strings_1.allUpperWordStyle : Strings_1.firstUpperWordStyle;
-    return (0, Strings_1.combineWords)(words, legalizeName, firstWordStyle, restWordStyle, firstWordStyle, restWordStyle, upperUnderscore ? "_" : "", isStartCharacter);
+            ? firstUpperWordStyle
+            : allLowerWordStyle;
+    const restWordStyle = upperUnderscore ? allUpperWordStyle : firstUpperWordStyle;
+    return combineWords(words, legalizeName, firstWordStyle, restWordStyle, firstWordStyle, restWordStyle, upperUnderscore ? "_" : "", isStartCharacter);
 }
-class DartRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
+export class DartRenderer extends ConvenienceRenderer {
     constructor(targetLanguage, renderContext, _options) {
         super(targetLanguage, renderContext);
         this._options = _options;
@@ -187,13 +183,13 @@ class DartRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return enumCaseNamingFunction;
     }
     unionNeedsName(u) {
-        return (0, TypeUtils_1.nullableFromUnion)(u) === null;
+        return nullableFromUnion(u) === null;
     }
     namedTypeToNameForTopLevel(type) {
         // If the top-level type doesn't contain any classes or unions
         // we have to define a class just for the `FromJson` method, in
         // emitFromJsonForTopLevel.
-        return (0, TypeUtils_1.directlyReachableSingleNamedType)(type);
+        return directlyReachableSingleNamedType(type);
     }
     get toJson() {
         return `to${this._options.methodNamesWithMap ? "Map" : "Json"}`;
@@ -202,14 +198,14 @@ class DartRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return `from${this._options.methodNamesWithMap ? "Map" : "Json"}`;
     }
     makeTopLevelDependencyNames(_t, name) {
-        const encoder = new Naming_1.DependencyName(propertyNamingFunction, name.order, lookup => `${lookup(name)}_${this.toJson}`);
-        const decoder = new Naming_1.DependencyName(propertyNamingFunction, name.order, lookup => `${lookup(name)}_${this.fromJson}`);
+        const encoder = new DependencyName(propertyNamingFunction, name.order, lookup => `${lookup(name)}_${this.toJson}`);
+        const decoder = new DependencyName(propertyNamingFunction, name.order, lookup => `${lookup(name)}_${this.fromJson}`);
         this._topLevelDependents.set(name, { encoder, decoder });
         return [encoder, decoder];
     }
     makeNamesForPropertyGetterAndSetter(_c, _className, _p, _jsonName, name) {
-        const getterName = new Naming_1.DependencyName(propertyNamingFunction, name.order, lookup => `get_${lookup(name)}`);
-        const setterName = new Naming_1.DependencyName(propertyNamingFunction, name.order, lookup => `set_${lookup(name)}`);
+        const getterName = new DependencyName(propertyNamingFunction, name.order, lookup => `get_${lookup(name)}`);
+        const setterName = new DependencyName(propertyNamingFunction, name.order, lookup => `set_${lookup(name)}`);
         return [getterName, setterName];
     }
     makePropertyDependencyNames(c, className, p, jsonName, name) {
@@ -218,9 +214,9 @@ class DartRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return getterAndSetterNames;
     }
     makeNamedTypeDependencyNames(t, name) {
-        if (!(t instanceof Type_1.EnumType))
+        if (!(t instanceof EnumType))
             return [];
-        const enumValue = new Naming_1.DependencyName(propertyNamingFunction, name.order, lookup => `${lookup(name)}_values`);
+        const enumValue = new DependencyName(propertyNamingFunction, name.order, lookup => `${lookup(name)}_values`);
         this._enumValues.set(t, enumValue);
         return [enumValue];
     }
@@ -234,8 +230,8 @@ class DartRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             this.emitLine("// To parse this JSON data, do");
             this.emitLine("//");
             this.forEachTopLevel("none", (_t, name) => {
-                const { decoder } = (0, Support_1.defined)(this._topLevelDependents.get(name));
-                this.emitLine("//     final ", (0, Source_1.modifySource)(Strings_1.decapitalize, name), " = ", decoder, "(jsonString);");
+                const { decoder } = defined(this._topLevelDependents.get(name));
+                this.emitLine("//     final ", modifySource(decapitalize, name), " = ", decoder, "(jsonString);");
             });
         }
         this.ensureBlankLine();
@@ -257,7 +253,7 @@ class DartRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             this.ensureBlankLine();
             const optionNameIsEmpty = this._options.partName.length === 0;
             // FIXME: This should use a `Name`, not `modifySource`
-            const name = (0, Source_1.modifySource)(Strings_1.snakeCase, optionNameIsEmpty ? [...this.topLevels.keys()][0] : this._options.partName);
+            const name = modifySource(snakeCase, optionNameIsEmpty ? [...this.topLevels.keys()][0] : this._options.partName);
             if (this._options.useFreezed) {
                 this.emitLine("part '", name, ".freezed.dart';");
             }
@@ -277,8 +273,8 @@ class DartRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     dartType(t, withIssues = false, forceNullable = false) {
         const nullable = forceNullable || (this._options.nullSafety && t.isNullable && !this._options.requiredProperties);
         const withNullable = (s) => (nullable ? [s, "?"] : s);
-        return (0, TypeUtils_1.matchType)(t, _anyType => (0, Source_1.maybeAnnotated)(withIssues, Annotation_1.anyTypeIssueAnnotation, "dynamic"), _nullType => (0, Source_1.maybeAnnotated)(withIssues, Annotation_1.nullTypeIssueAnnotation, "dynamic"), _boolType => withNullable("bool"), _integerType => withNullable("int"), _doubleType => withNullable("double"), _stringType => withNullable("String"), arrayType => withNullable(["List<", this.dartType(arrayType.items, withIssues), ">"]), classType => withNullable(this.nameForNamedType(classType)), mapType => withNullable(["Map<String, ", this.dartType(mapType.values, withIssues), ">"]), enumType => withNullable(this.nameForNamedType(enumType)), unionType => {
-            const maybeNullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+        return matchType(t, _anyType => maybeAnnotated(withIssues, anyTypeIssueAnnotation, "dynamic"), _nullType => maybeAnnotated(withIssues, nullTypeIssueAnnotation, "dynamic"), _boolType => withNullable("bool"), _integerType => withNullable("int"), _doubleType => withNullable("double"), _stringType => withNullable("String"), arrayType => withNullable(["List<", this.dartType(arrayType.items, withIssues), ">"]), classType => withNullable(this.nameForNamedType(classType)), mapType => withNullable(["Map<String, ", this.dartType(mapType.values, withIssues), ">"]), enumType => withNullable(this.nameForNamedType(enumType)), unionType => {
+            const maybeNullable = nullableFromUnion(unionType);
             if (maybeNullable === null) {
                 return "dynamic";
             }
@@ -326,17 +322,17 @@ class DartRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     // so add isNullable property
     // eslint-disable-next-line @typescript-eslint/default-param-last
     fromDynamicExpression(isNullable = false, t, ...dynamic) {
-        return (0, TypeUtils_1.matchType)(t, _anyType => dynamic, _nullType => dynamic, // FIXME: check null
+        return matchType(t, _anyType => dynamic, _nullType => dynamic, // FIXME: check null
         // FIXME: check null
         _boolType => dynamic, _integerType => dynamic, _doubleType => [dynamic, this._options.nullSafety ? "?.toDouble()" : ".toDouble()"], _stringType => dynamic, arrayType => this.mapList(isNullable || arrayType.isNullable, this.dartType(arrayType.items), dynamic, this.fromDynamicExpression(arrayType.items.isNullable, arrayType.items, "x")), classType => this.mapClass(isNullable || classType.isNullable, classType, dynamic), mapType => this.mapMap(mapType.isNullable || isNullable, this.dartType(mapType.values), dynamic, this.fromDynamicExpression(mapType.values.isNullable, mapType.values, "v")), enumType => {
             return [
-                (0, Support_1.defined)(this._enumValues.get(enumType)),
+                defined(this._enumValues.get(enumType)),
                 ".map[",
                 dynamic,
                 this._options.nullSafety ? "]!" : "]"
             ];
         }, unionType => {
-            const maybeNullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+            const maybeNullable = nullableFromUnion(unionType);
             if (maybeNullable === null) {
                 return dynamic;
             }
@@ -362,7 +358,7 @@ class DartRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     // so add isNullable property
     // eslint-disable-next-line @typescript-eslint/default-param-last
     toDynamicExpression(isNullable = false, t, ...dynamic) {
-        return (0, TypeUtils_1.matchType)(t, _anyType => dynamic, _nullType => dynamic, _boolType => dynamic, _integerType => dynamic, _doubleType => dynamic, _stringType => dynamic, arrayType => this.mapList(arrayType.isNullable || isNullable, "dynamic", dynamic, this.toDynamicExpression(arrayType.items.isNullable, arrayType.items, "x")), _classType => {
+        return matchType(t, _anyType => dynamic, _nullType => dynamic, _boolType => dynamic, _integerType => dynamic, _doubleType => dynamic, _stringType => dynamic, arrayType => this.mapList(arrayType.isNullable || isNullable, "dynamic", dynamic, this.toDynamicExpression(arrayType.items.isNullable, arrayType.items, "x")), _classType => {
             if (this._options.nullSafety &&
                 (_classType.isNullable || isNullable) &&
                 !this._options.requiredProperties) {
@@ -370,9 +366,9 @@ class DartRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             }
             return [dynamic, ".", this.toJson, "()"];
         }, mapType => this.mapMap(mapType.isNullable || isNullable, "dynamic", dynamic, this.toDynamicExpression(mapType.values.isNullable, mapType.values, "v")), enumType => {
-            return [(0, Support_1.defined)(this._enumValues.get(enumType)), ".reverse[", dynamic, "]"];
+            return [defined(this._enumValues.get(enumType)), ".reverse[", dynamic, "]"];
         }, unionType => {
-            const maybeNullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+            const maybeNullable = nullableFromUnion(unionType);
             if (maybeNullable === null) {
                 return dynamic;
             }
@@ -583,7 +579,7 @@ class DartRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         if (this._options.justTypes)
             return;
         this.ensureBlankLine();
-        this.emitLine("final ", (0, Support_1.defined)(this._enumValues.get(e)), " = EnumValues({");
+        this.emitLine("final ", defined(this._enumValues.get(e)), " = EnumValues({");
         this.indent(() => {
             this.forEachEnumCase(e, "none", (name, jsonName, pos) => {
                 const comma = pos === "first" || pos === "middle" ? "," : [];
@@ -609,7 +605,7 @@ class DartRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     }
     _emitTopLvlEncoderDecoder() {
         this.forEachTopLevel("leading-and-interposing", (t, name) => {
-            const { encoder, decoder } = (0, Support_1.defined)(this._topLevelDependents.get(name));
+            const { encoder, decoder } = defined(this._topLevelDependents.get(name));
             this.emitLine(this.dartType(t), " ", decoder, "(String str) => ", this.fromDynamicExpression(t.isNullable, t, "json.decode(str)"), ";");
             this.ensureBlankLine();
             this.emitLine("String ", encoder, "(", this.dartType(t), " data) => json.encode(", this.toDynamicExpression(t.isNullable, t, "data"), ");");
@@ -631,4 +627,3 @@ class DartRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         }
     }
 }
-exports.DartRenderer = DartRenderer;

@@ -1,12 +1,9 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.TargetLanguage = void 0;
-const collection_utils_1 = require("collection-utils");
-const ConvenienceRenderer_1 = require("./ConvenienceRenderer");
-const DateTime_1 = require("./DateTime");
-const Source_1 = require("./Source");
-const Support_1 = require("./support/Support");
-class TargetLanguage {
+import { mapMap } from "collection-utils";
+import { ConvenienceRenderer } from "./ConvenienceRenderer";
+import { DefaultDateTimeRecognizer } from "./DateTime";
+import { serializeRenderResult } from "./Source";
+import { defined } from "./support/Support";
+export class TargetLanguage {
     constructor(displayName, names, extension) {
         this.displayName = displayName;
         this.names = names;
@@ -25,7 +22,7 @@ class TargetLanguage {
         return { actual, display };
     }
     get name() {
-        return (0, Support_1.defined)(this.names[0]);
+        return defined(this.names[0]);
     }
     renderGraphAndSerialize(typeGraph, givenOutputFilename, alphabetizeProperties, leadingComments, rendererOptions, indentation) {
         if (indentation === undefined) {
@@ -33,11 +30,11 @@ class TargetLanguage {
         }
         const renderContext = { typeGraph, leadingComments };
         const renderer = this.makeRenderer(renderContext, rendererOptions);
-        if (renderer instanceof ConvenienceRenderer_1.ConvenienceRenderer) {
+        if (renderer instanceof ConvenienceRenderer) {
             renderer.setAlphabetizeProperties(alphabetizeProperties);
         }
         const renderResult = renderer.render(givenOutputFilename);
-        return (0, collection_utils_1.mapMap)(renderResult.sources, s => (0, Source_1.serializeRenderResult)(s, renderResult.names, (0, Support_1.defined)(indentation)));
+        return mapMap(renderResult.sources, s => serializeRenderResult(s, renderResult.names, defined(indentation)));
     }
     get defaultIndentation() {
         return "    ";
@@ -58,7 +55,6 @@ class TargetLanguage {
         return false;
     }
     get dateTimeRecognizer() {
-        return new DateTime_1.DefaultDateTimeRecognizer();
+        return new DefaultDateTimeRecognizer();
     }
 }
-exports.TargetLanguage = TargetLanguage;

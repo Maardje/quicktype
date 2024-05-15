@@ -1,8 +1,5 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.test = exports.generate = exports.evaluate = exports.evaluateFull = exports.load = exports.train = void 0;
-const EncodedMarkovChain_1 = require("./EncodedMarkovChain");
-const Support_1 = require("./support/Support");
+import { encodedMarkovChain } from "./EncodedMarkovChain";
+import { assert, inflateBase64, panic } from "./support/Support";
 function makeTrie() {
     const arr = [];
     for (let i = 0; i < 128; i++) {
@@ -36,14 +33,14 @@ function increment(t, seq, i) {
     }
     if (i >= seq.length - 1) {
         if (typeof t !== "object") {
-            return (0, Support_1.panic)("Malformed trie");
+            return panic("Malformed trie");
         }
         let n = t.arr[first];
         if (n === null) {
             n = 0;
         }
         else if (typeof n === "object") {
-            return (0, Support_1.panic)("Malformed trie");
+            return panic("Malformed trie");
         }
         t.arr[first] = n + 1;
         t.count += 1;
@@ -54,11 +51,11 @@ function increment(t, seq, i) {
         t.arr[first] = st = makeTrie();
     }
     if (typeof st !== "object") {
-        return (0, Support_1.panic)("Malformed trie");
+        return panic("Malformed trie");
     }
     increment(st, seq, i + 1);
 }
-function train(lines, depth) {
+export function train(lines, depth) {
     const trie = makeTrie();
     for (const l of lines) {
         for (let i = depth; i <= l.length; i++) {
@@ -67,12 +64,10 @@ function train(lines, depth) {
     }
     return { trie, depth };
 }
-exports.train = train;
-function load() {
-    return JSON.parse((0, Support_1.inflateBase64)(EncodedMarkovChain_1.encodedMarkovChain));
+export function load() {
+    return JSON.parse(inflateBase64(encodedMarkovChain));
 }
-exports.load = load;
-function evaluateFull(mc, word) {
+export function evaluateFull(mc, word) {
     const { trie, depth } = mc;
     if (word.length < depth) {
         return [1, []];
@@ -82,7 +77,7 @@ function evaluateFull(mc, word) {
     for (let i = depth; i <= word.length; i++) {
         let cp = lookup(trie, word.slice(i - depth, i), 0);
         if (typeof cp === "object") {
-            return (0, Support_1.panic)("Did we mess up the depth?");
+            return panic("Did we mess up the depth?");
         }
         if (cp === undefined) {
             cp = 0.0001;
@@ -92,20 +87,18 @@ function evaluateFull(mc, word) {
     }
     return [Math.pow(p, 1 / (word.length - depth + 1)), scores];
 }
-exports.evaluateFull = evaluateFull;
-function evaluate(mc, word) {
+export function evaluate(mc, word) {
     return evaluateFull(mc, word)[0];
 }
-exports.evaluate = evaluate;
 function randomInt(lower, upper) {
     const range = upper - lower;
     return lower + Math.floor(Math.random() * range);
 }
-function generate(mc, state, unseenWeight) {
-    (0, Support_1.assert)(state.length === mc.depth - 1, "State and chain length don't match up");
+export function generate(mc, state, unseenWeight) {
+    assert(state.length === mc.depth - 1, "State and chain length don't match up");
     const t = lookup(mc.trie, state, 0);
     if (typeof t === "number") {
-        return (0, Support_1.panic)("Wrong depth?");
+        return panic("Wrong depth?");
     }
     if (t === undefined) {
         return String.fromCharCode(randomInt(32, 127));
@@ -123,13 +116,12 @@ function generate(mc, state, unseenWeight) {
             return String.fromCharCode(i);
         }
     }
-    return (0, Support_1.panic)("We screwed up bookkeeping, or randomInt");
+    return panic("We screwed up bookkeeping, or randomInt");
 }
-exports.generate = generate;
 function testWord(mc, word) {
     console.log(`"${word}": ${evaluate(mc, word)}`);
 }
-function test() {
+export function test() {
     const mc = load();
     testWord(mc, "url");
     testWord(mc, "json");
@@ -151,4 +143,3 @@ function test() {
     testWord(mc, "contactInformation");
     testWord(mc, "\ud83d\udebe \ud83c\udd92 \ud83c\udd93 \ud83c\udd95 \ud83c\udd96 \ud83c\udd97 \ud83c\udd99 \ud83c\udfe7");
 }
-exports.test = test;

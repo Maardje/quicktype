@@ -1,11 +1,8 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.accessorNamesAttributeProducer = exports.makeAccessorNames = exports.unionMemberName = exports.makeUnionMemberNamesAttribute = exports.unionMemberNamesTypeAttributeKind = exports.makeUnionIdentifierAttribute = exports.unionIdentifierTypeAttributeKind = exports.getAccessorName = exports.enumCaseNames = exports.objectPropertyNames = exports.lookupKey = exports.accessorNamesTypeAttributeKind = void 0;
-const collection_utils_1 = require("collection-utils");
-const Messages_1 = require("../Messages");
-const Support_1 = require("../support/Support");
-const TypeAttributes_1 = require("./TypeAttributes");
-class AccessorNamesTypeAttributeKind extends TypeAttributes_1.TypeAttributeKind {
+import { iterableFirst, mapFromIterable, mapFromObject, mapMap, mapMergeInto, setUnionManyInto } from "collection-utils";
+import { messageAssert } from "../Messages";
+import { checkArray, checkStringMap, defined, isStringMap } from "../support/Support";
+import { TypeAttributeKind } from "./TypeAttributes";
+class AccessorNamesTypeAttributeKind extends TypeAttributeKind {
     constructor() {
         super("accessorNames");
     }
@@ -13,7 +10,7 @@ class AccessorNamesTypeAttributeKind extends TypeAttributes_1.TypeAttributeKind 
         return undefined;
     }
 }
-exports.accessorNamesTypeAttributeKind = new AccessorNamesTypeAttributeKind();
+export const accessorNamesTypeAttributeKind = new AccessorNamesTypeAttributeKind();
 // Returns [name, isFixed].
 function getFromEntry(entry, language) {
     if (typeof entry === "string")
@@ -26,35 +23,31 @@ function getFromEntry(entry, language) {
         return [maybeWildcard, false];
     return undefined;
 }
-function lookupKey(accessors, key, language) {
+export function lookupKey(accessors, key, language) {
     const entry = accessors.get(key);
     if (entry === undefined)
         return undefined;
     return getFromEntry(entry, language);
 }
-exports.lookupKey = lookupKey;
-function objectPropertyNames(o, language) {
-    const accessors = exports.accessorNamesTypeAttributeKind.tryGetInAttributes(o.getAttributes());
+export function objectPropertyNames(o, language) {
+    const accessors = accessorNamesTypeAttributeKind.tryGetInAttributes(o.getAttributes());
     const map = o.getProperties();
     if (accessors === undefined)
-        return (0, collection_utils_1.mapMap)(map, _ => undefined);
-    return (0, collection_utils_1.mapMap)(map, (_cp, n) => lookupKey(accessors, n, language));
+        return mapMap(map, _ => undefined);
+    return mapMap(map, (_cp, n) => lookupKey(accessors, n, language));
 }
-exports.objectPropertyNames = objectPropertyNames;
-function enumCaseNames(e, language) {
-    const accessors = exports.accessorNamesTypeAttributeKind.tryGetInAttributes(e.getAttributes());
+export function enumCaseNames(e, language) {
+    const accessors = accessorNamesTypeAttributeKind.tryGetInAttributes(e.getAttributes());
     if (accessors === undefined)
-        return (0, collection_utils_1.mapMap)(e.cases.entries(), _ => undefined);
-    return (0, collection_utils_1.mapMap)(e.cases.entries(), c => lookupKey(accessors, c, language));
+        return mapMap(e.cases.entries(), _ => undefined);
+    return mapMap(e.cases.entries(), c => lookupKey(accessors, c, language));
 }
-exports.enumCaseNames = enumCaseNames;
-function getAccessorName(names, original) {
+export function getAccessorName(names, original) {
     const maybeName = names.get(original);
     if (maybeName === undefined)
         return [undefined, false];
     return maybeName;
 }
-exports.getAccessorName = getAccessorName;
 // Union members can be recombined and reordered, and unions are combined as well, so
 // we can't just store an array of accessor entries in a union, one array entry for each
 // union member.  Instead, we give each union in the origin type graph a union identifier,
@@ -62,49 +55,47 @@ exports.getAccessorName = getAccessorName;
 // That way, no matter how the types are recombined, if we find a union member, we can look
 // up its union's identifier(s), and then look up the member's accessor entries for that
 // identifier.  Of course we might find more than one, potentially conflicting.
-class UnionIdentifierTypeAttributeKind extends TypeAttributes_1.TypeAttributeKind {
+class UnionIdentifierTypeAttributeKind extends TypeAttributeKind {
     constructor() {
         super("unionIdentifier");
     }
     combine(arr) {
-        return (0, collection_utils_1.setUnionManyInto)(new Set(), arr);
+        return setUnionManyInto(new Set(), arr);
     }
     makeInferred(_) {
         return new Set();
     }
 }
-exports.unionIdentifierTypeAttributeKind = new UnionIdentifierTypeAttributeKind();
+export const unionIdentifierTypeAttributeKind = new UnionIdentifierTypeAttributeKind();
 let nextUnionIdentifier = 0;
-function makeUnionIdentifierAttribute() {
-    const attributes = exports.unionIdentifierTypeAttributeKind.makeAttributes(new Set([nextUnionIdentifier]));
+export function makeUnionIdentifierAttribute() {
+    const attributes = unionIdentifierTypeAttributeKind.makeAttributes(new Set([nextUnionIdentifier]));
     nextUnionIdentifier += 1;
     return attributes;
 }
-exports.makeUnionIdentifierAttribute = makeUnionIdentifierAttribute;
-class UnionMemberNamesTypeAttributeKind extends TypeAttributes_1.TypeAttributeKind {
+class UnionMemberNamesTypeAttributeKind extends TypeAttributeKind {
     constructor() {
         super("unionMemberNames");
     }
     combine(arr) {
         const result = new Map();
         for (const m of arr) {
-            (0, collection_utils_1.mapMergeInto)(result, m);
+            mapMergeInto(result, m);
         }
         return result;
     }
 }
-exports.unionMemberNamesTypeAttributeKind = new UnionMemberNamesTypeAttributeKind();
-function makeUnionMemberNamesAttribute(unionAttributes, entry) {
-    const identifiers = (0, Support_1.defined)(exports.unionIdentifierTypeAttributeKind.tryGetInAttributes(unionAttributes));
-    const map = (0, collection_utils_1.mapFromIterable)(identifiers, _ => entry);
-    return exports.unionMemberNamesTypeAttributeKind.makeAttributes(map);
+export const unionMemberNamesTypeAttributeKind = new UnionMemberNamesTypeAttributeKind();
+export function makeUnionMemberNamesAttribute(unionAttributes, entry) {
+    const identifiers = defined(unionIdentifierTypeAttributeKind.tryGetInAttributes(unionAttributes));
+    const map = mapFromIterable(identifiers, _ => entry);
+    return unionMemberNamesTypeAttributeKind.makeAttributes(map);
 }
-exports.makeUnionMemberNamesAttribute = makeUnionMemberNamesAttribute;
-function unionMemberName(u, member, language) {
-    const identifiers = exports.unionIdentifierTypeAttributeKind.tryGetInAttributes(u.getAttributes());
+export function unionMemberName(u, member, language) {
+    const identifiers = unionIdentifierTypeAttributeKind.tryGetInAttributes(u.getAttributes());
     if (identifiers === undefined)
         return [undefined, false];
-    const memberNames = exports.unionMemberNamesTypeAttributeKind.tryGetInAttributes(member.getAttributes());
+    const memberNames = unionMemberNamesTypeAttributeKind.tryGetInAttributes(member.getAttributes());
     if (memberNames === undefined)
         return [undefined, false];
     const names = new Set();
@@ -126,52 +117,50 @@ function unionMemberName(u, member, language) {
     }
     let size;
     let isFixed;
-    let first = (0, collection_utils_1.iterableFirst)(fixedNames);
+    let first = iterableFirst(fixedNames);
     if (first !== undefined) {
         size = fixedNames.size;
         isFixed = true;
     }
     else {
-        first = (0, collection_utils_1.iterableFirst)(names);
+        first = iterableFirst(names);
         if (first === undefined)
             return [undefined, false];
         size = names.size;
         isFixed = false;
     }
-    (0, Messages_1.messageAssert)(size === 1, "SchemaMoreThanOneUnionMemberName", { names: Array.from(names) });
+    messageAssert(size === 1, "SchemaMoreThanOneUnionMemberName", { names: Array.from(names) });
     return [first, isFixed];
 }
-exports.unionMemberName = unionMemberName;
 function isAccessorEntry(x) {
     if (typeof x === "string") {
         return true;
     }
-    return (0, Support_1.isStringMap)(x, (v) => typeof v === "string");
+    return isStringMap(x, (v) => typeof v === "string");
 }
 function makeAccessorEntry(ae) {
     if (typeof ae === "string")
         return ae;
-    return (0, collection_utils_1.mapFromObject)(ae);
+    return mapFromObject(ae);
 }
-function makeAccessorNames(x) {
+export function makeAccessorNames(x) {
     // FIXME: Do proper error reporting
-    const stringMap = (0, Support_1.checkStringMap)(x, isAccessorEntry);
-    return (0, collection_utils_1.mapMap)((0, collection_utils_1.mapFromObject)(stringMap), makeAccessorEntry);
+    const stringMap = checkStringMap(x, isAccessorEntry);
+    return mapMap(mapFromObject(stringMap), makeAccessorEntry);
 }
-exports.makeAccessorNames = makeAccessorNames;
-function accessorNamesAttributeProducer(schema, canonicalRef, _types, cases) {
+export function accessorNamesAttributeProducer(schema, canonicalRef, _types, cases) {
     if (typeof schema !== "object")
         return undefined;
     const maybeAccessors = schema["qt-accessors"];
     if (maybeAccessors === undefined)
         return undefined;
     if (cases === undefined) {
-        return { forType: exports.accessorNamesTypeAttributeKind.makeAttributes(makeAccessorNames(maybeAccessors)) };
+        return { forType: accessorNamesTypeAttributeKind.makeAttributes(makeAccessorNames(maybeAccessors)) };
     }
     else {
         const identifierAttribute = makeUnionIdentifierAttribute();
-        const accessors = (0, Support_1.checkArray)(maybeAccessors, isAccessorEntry);
-        (0, Messages_1.messageAssert)(cases.length === accessors.length, "SchemaWrongAccessorEntryArrayLength", {
+        const accessors = checkArray(maybeAccessors, isAccessorEntry);
+        messageAssert(cases.length === accessors.length, "SchemaWrongAccessorEntryArrayLength", {
             operation: "oneOf",
             ref: canonicalRef.push("oneOf")
         });
@@ -179,4 +168,3 @@ function accessorNamesAttributeProducer(schema, canonicalRef, _types, cases) {
         return { forUnion: identifierAttribute, forCases: caseAttributes };
     }
 }
-exports.accessorNamesAttributeProducer = accessorNamesAttributeProducer;

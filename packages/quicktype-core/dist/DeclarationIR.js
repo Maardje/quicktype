@@ -1,17 +1,13 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.declarationsForGraph = exports.cycleBreakerTypesForGraph = exports.DeclarationIR = void 0;
-const collection_utils_1 = require("collection-utils");
-const Graph_1 = require("./Graph");
-const Messages_1 = require("./Messages");
-const Support_1 = require("./support/Support");
-class DeclarationIR {
+import { iterableFirst, setFilter, setIntersect, setSubtract, setUnionInto } from "collection-utils";
+import { Graph } from "./Graph";
+import { messageError } from "./Messages";
+import { assert, defined, panic } from "./support/Support";
+export class DeclarationIR {
     constructor(declarations, forwardedTypes) {
         this.forwardedTypes = forwardedTypes;
         this.declarations = Array.from(declarations);
     }
 }
-exports.DeclarationIR = DeclarationIR;
 function findBreaker(t, path, canBreak) {
     const index = path.indexOf(t);
     if (index < 0)
@@ -22,11 +18,11 @@ function findBreaker(t, path, canBreak) {
     const potentialBreakers = path.slice(0, index + 1).reverse();
     const maybeBreaker = potentialBreakers.find(canBreak);
     if (maybeBreaker === undefined) {
-        return (0, Support_1.panic)("Found a cycle that cannot be broken");
+        return panic("Found a cycle that cannot be broken");
     }
     return maybeBreaker;
 }
-function cycleBreakerTypesForGraph(graph, isImplicitCycleBreaker, canBreakCycles) {
+export function cycleBreakerTypesForGraph(graph, isImplicitCycleBreaker, canBreakCycles) {
     const visitedTypes = new Set();
     const cycleBreakerTypes = new Set();
     const queue = Array.from(graph.topLevels.values());
@@ -58,12 +54,11 @@ function cycleBreakerTypesForGraph(graph, isImplicitCycleBreaker, canBreakCycles
             break;
         const path = [];
         visit(maybeType, path);
-        (0, Support_1.assert)(path.length === 0);
+        assert(path.length === 0);
     }
     return cycleBreakerTypes;
 }
-exports.cycleBreakerTypesForGraph = cycleBreakerTypesForGraph;
-function declarationsForGraph(typeGraph, canBeForwardDeclared, childrenOfType, needsDeclaration) {
+export function declarationsForGraph(typeGraph, canBeForwardDeclared, childrenOfType, needsDeclaration) {
     /*
     function nodeTitle(t: Type): string {
         const indexAndKind = `${t.typeRef.index} ${t.kind}`;
@@ -88,11 +83,11 @@ function declarationsForGraph(typeGraph, canBeForwardDeclared, childrenOfType, n
                 return;
             visitedComponents.add(component);
             // console.log(`visiting component ${componentName(component)}`);
-            const declarationNeeded = (0, collection_utils_1.setFilter)(component, needsDeclaration);
+            const declarationNeeded = setFilter(component, needsDeclaration);
             // 1. Only one node in the cycle needs a declaration, in which
             // case it's the breaker, and no forward declaration is necessary.
             if (declarationNeeded.size === 1) {
-                declarations.push({ kind: "define", type: (0, Support_1.defined)((0, collection_utils_1.iterableFirst)(declarationNeeded)) });
+                declarations.push({ kind: "define", type: defined(iterableFirst(declarationNeeded)) });
                 return;
             }
             // 2. No node in the cycle needs a declaration, but it's also
@@ -105,7 +100,7 @@ function declarationsForGraph(typeGraph, canBeForwardDeclared, childrenOfType, n
             // declaration, so we can pick any one. This is not a forward
             // declaration, either.
             if (declarationNeeded.size === 0) {
-                declarations.push({ kind: "define", type: (0, Support_1.defined)((0, collection_utils_1.iterableFirst)(component)) });
+                declarations.push({ kind: "define", type: defined(iterableFirst(component)) });
                 return;
             }
             // 4. More than one node needs a declaration, and we don't need
@@ -123,16 +118,16 @@ function declarationsForGraph(typeGraph, canBeForwardDeclared, childrenOfType, n
             // there are none, we're stuck.  If there are, we take them out of
             // the component and try the whole thing again recursively.  Then
             // we declare the types we previously forward-declared.
-            const forwardDeclarable = (0, collection_utils_1.setFilter)(component, canBeForwardDeclared);
+            const forwardDeclarable = setFilter(component, canBeForwardDeclared);
             if (forwardDeclarable.size === 0) {
-                return (0, Messages_1.messageError)("IRNoForwardDeclarableTypeInCycle", {});
+                return messageError("IRNoForwardDeclarableTypeInCycle", {});
             }
             for (const t of forwardDeclarable) {
                 declarations.push({ kind: "forward", type: t });
             }
-            (0, collection_utils_1.setUnionInto)(forwardedTypes, forwardDeclarable);
-            const rest = (0, collection_utils_1.setSubtract)(component, forwardDeclarable);
-            const restGraph = new Graph_1.Graph(rest, true, t => (0, collection_utils_1.setIntersect)(childrenOfType(t), rest));
+            setUnionInto(forwardedTypes, forwardDeclarable);
+            const rest = setSubtract(component, forwardDeclarable);
+            const restGraph = new Graph(rest, true, t => setIntersect(childrenOfType(t), rest));
             processGraph(restGraph, false);
             for (const t of forwardDeclarable) {
                 declarations.push({ kind: "define", type: t });
@@ -162,4 +157,3 @@ function declarationsForGraph(typeGraph, canBeForwardDeclared, childrenOfType, n
     processGraph(fullGraph, true);
     return new DeclarationIR(declarations, forwardedTypes);
 }
-exports.declarationsForGraph = declarationsForGraph;

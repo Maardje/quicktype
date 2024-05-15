@@ -1,9 +1,6 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.assignNames = exports.keywordNamespace = exports.DependencyName = exports.AssociatedName = exports.SimpleName = exports.FixedName = exports.Name = exports.funPrefixNamer = exports.Namer = exports.Namespace = void 0;
-const collection_utils_1 = require("collection-utils");
-const Support_1 = require("./support/Support");
-class Namespace {
+import { iterableEvery, iterableFind, iterableFirst, iterableMinBy, iterableSome, mapMergeInto, setFilter, setFilterMap, setGroupBy, setMap, setUnion, setUnionInto } from "collection-utils";
+import { assert, defined, panic } from "./support/Support";
+export class Namespace {
     constructor(_name, parent, forbiddenNamespaces, additionalForbidden) {
         this._children = new Set();
         this._members = new Set();
@@ -24,14 +21,13 @@ class Namespace {
     }
     get forbiddenNameds() {
         // FIXME: cache
-        return (0, collection_utils_1.setUnion)(this.additionalForbidden, ...Array.from(this.forbiddenNamespaces).map(ns => ns.members));
+        return setUnion(this.additionalForbidden, ...Array.from(this.forbiddenNamespaces).map(ns => ns.members));
     }
     add(named) {
         this._members.add(named);
         return named;
     }
 }
-exports.Namespace = Namespace;
 // `Namer`s are invoked to figure out what names to assign non-fixed `Name`s,
 // and in particular to resolve conflicts.  Those arise under two circumstances,
 // which can also combine:
@@ -46,7 +42,7 @@ exports.Namespace = Namespace;
 //
 // `Namer` is a class so that we can compare namers and put them into immutable
 // collections.
-class Namer {
+export class Namer {
     constructor(name, nameStyle, prefixes) {
         this.name = name;
         this.nameStyle = nameStyle;
@@ -58,7 +54,7 @@ class Namer {
     assignNames(names, forbiddenNamesIterable, namesToAssignIterable) {
         const forbiddenNames = new Set(forbiddenNamesIterable);
         const namesToAssign = Array.from(namesToAssignIterable);
-        (0, Support_1.assert)(namesToAssign.length > 0, "Number of names can't be less than 1");
+        assert(namesToAssign.length > 0, "Number of names can't be less than 1");
         const allAssignedNames = new Map();
         let namesToPrefix = [];
         for (const name of namesToAssign) {
@@ -66,14 +62,14 @@ class Namer {
             const namingFunction = name.namingFunction;
             // Find the first proposed name that isn't proposed by
             // any of the other names and that isn't already forbidden.
-            const maybeUniqueName = (0, collection_utils_1.iterableFind)(proposedNames, proposed => !forbiddenNames.has(namingFunction.nameStyle(proposed)) &&
+            const maybeUniqueName = iterableFind(proposedNames, proposed => !forbiddenNames.has(namingFunction.nameStyle(proposed)) &&
                 namesToAssign.every(n => n === name || !n.proposeUnstyledNames(names).has(proposed)));
             if (maybeUniqueName !== undefined) {
                 const styledName = namingFunction.nameStyle(maybeUniqueName);
                 const assigned = name.nameAssignments(forbiddenNames, styledName);
                 if (assigned !== null) {
-                    (0, collection_utils_1.mapMergeInto)(allAssignedNames, assigned);
-                    (0, collection_utils_1.setUnionInto)(forbiddenNames, assigned.values());
+                    mapMergeInto(allAssignedNames, assigned);
+                    setUnionInto(forbiddenNames, assigned.values());
                     continue;
                 }
             }
@@ -84,7 +80,7 @@ class Namer {
         let prefixes = this._prefixes.values();
         let suffixNumber = 1;
         for (const name of namesToPrefix) {
-            const originalName = (0, Support_1.defined)((0, collection_utils_1.iterableFirst)(name.proposeUnstyledNames(names)));
+            const originalName = defined(iterableFirst(name.proposeUnstyledNames(names)));
             for (;;) {
                 let nameToTry;
                 const { done, value: prefix } = prefixes.next();
@@ -99,15 +95,14 @@ class Namer {
                 const assigned = name.nameAssignments(forbiddenNames, styledName);
                 if (assigned === null)
                     continue;
-                (0, collection_utils_1.mapMergeInto)(allAssignedNames, assigned);
-                (0, collection_utils_1.setUnionInto)(forbiddenNames, assigned.values());
+                mapMergeInto(allAssignedNames, assigned);
+                setUnionInto(forbiddenNames, assigned.values());
                 break;
             }
         }
         return allAssignedNames;
     }
 }
-exports.Namer = Namer;
 const funPrefixes = [
     "Purple",
     "Fluffy",
@@ -123,15 +118,14 @@ const funPrefixes = [
     "Mischievous",
     "Braggadocious"
 ];
-function funPrefixNamer(name, nameStyle) {
+export function funPrefixNamer(name, nameStyle) {
     return new Namer(name, nameStyle, funPrefixes);
 }
-exports.funPrefixNamer = funPrefixNamer;
 // FIXME: I think the type hierarchy is somewhat wrong here.  `FixedName`
 // should be a `Name`, but the non-fixed names should probably have their
 // own common superclass.  Most methods of `Name` make sense only either
 // for `FixedName` or the non-fixed names.
-class Name {
+export class Name {
     // If a Named is fixed, the namingFunction is undefined.
     constructor(_namingFunction, order) {
         this._namingFunction = _namingFunction;
@@ -145,10 +139,10 @@ class Name {
         return this instanceof FixedName;
     }
     get namingFunction() {
-        return (0, Support_1.defined)(this._namingFunction);
+        return defined(this._namingFunction);
     }
     firstProposedName(names) {
-        return (0, Support_1.defined)((0, collection_utils_1.iterableFirst)(this.proposeUnstyledNames(names)));
+        return defined(iterableFirst(this.proposeUnstyledNames(names)));
     }
     nameAssignments(forbiddenNames, assignedName) {
         if (forbiddenNames.has(assignedName))
@@ -164,9 +158,8 @@ class Name {
         return assignments;
     }
 }
-exports.Name = Name;
 // FIXME: FixedNameds should optionally be user-configurable
-class FixedName extends Name {
+export class FixedName extends Name {
     constructor(_fixedName) {
         super(undefined, 0);
         this._fixedName = _fixedName;
@@ -175,17 +168,16 @@ class FixedName extends Name {
         return [];
     }
     addAssociate(_) {
-        return (0, Support_1.panic)("Cannot add associates to fixed names");
+        return panic("Cannot add associates to fixed names");
     }
     get fixedName() {
         return this._fixedName;
     }
     proposeUnstyledNames(_) {
-        return (0, Support_1.panic)("Only fixedName should be called on FixedName.");
+        return panic("Only fixedName should be called on FixedName.");
     }
 }
-exports.FixedName = FixedName;
-class SimpleName extends Name {
+export class SimpleName extends Name {
     constructor(unstyledNames, namingFunction, order) {
         super(namingFunction, order);
         this._unstyledNames = new Set(unstyledNames);
@@ -197,8 +189,7 @@ class SimpleName extends Name {
         return this._unstyledNames;
     }
 }
-exports.SimpleName = SimpleName;
-class AssociatedName extends Name {
+export class AssociatedName extends Name {
     constructor(_sponsor, order, getName) {
         super(undefined, order);
         this._sponsor = _sponsor;
@@ -208,11 +199,10 @@ class AssociatedName extends Name {
         return [this._sponsor];
     }
     proposeUnstyledNames(_) {
-        return (0, Support_1.panic)("AssociatedName must be assigned via its sponsor");
+        return panic("AssociatedName must be assigned via its sponsor");
     }
 }
-exports.AssociatedName = AssociatedName;
-class DependencyName extends Name {
+export class DependencyName extends Name {
     constructor(namingFunction, order, _proposeUnstyledName) {
         super(namingFunction, order);
         this._proposeUnstyledName = _proposeUnstyledName;
@@ -229,23 +219,21 @@ class DependencyName extends Name {
     proposeUnstyledNames(names) {
         return new Set([
             this._proposeUnstyledName(n => {
-                (0, Support_1.assert)(this._dependencies.has(n), "DependencyName proposer is not pure");
-                return (0, Support_1.defined)(names.get(n));
+                assert(this._dependencies.has(n), "DependencyName proposer is not pure");
+                return defined(names.get(n));
             })
         ]);
     }
 }
-exports.DependencyName = DependencyName;
-function keywordNamespace(name, keywords) {
+export function keywordNamespace(name, keywords) {
     const ns = new Namespace(name, undefined, [], []);
     for (const kw of keywords) {
         ns.add(new FixedName(kw));
     }
     return ns;
 }
-exports.keywordNamespace = keywordNamespace;
 function allNamespacesRecursively(namespaces) {
-    return (0, collection_utils_1.setUnion)(namespaces, ...Array.from((0, collection_utils_1.setMap)(namespaces, ns => allNamespacesRecursively(ns.children))));
+    return setUnion(namespaces, ...Array.from(setMap(namespaces, ns => allNamespacesRecursively(ns.children))));
 }
 class NamingContext {
     constructor(rootNamespaces) {
@@ -262,7 +250,7 @@ class NamingContext {
         return named.dependencies.every((n) => this._names.has(n));
     }
     areForbiddensFullyNamed(namespace) {
-        return (0, collection_utils_1.iterableEvery)(namespace.forbiddenNameds, n => this._names.has(n));
+        return iterableEvery(namespace.forbiddenNameds, n => this._names.has(n));
     }
     isConflicting(namedNamespace, proposed) {
         const namedsForProposed = this._namedsForName.get(proposed);
@@ -278,8 +266,8 @@ class NamingContext {
         return false;
     }
     assign(named, namedNamespace, name) {
-        (0, Support_1.assert)(!this.names.has(named), `Name "${name}" assigned twice`);
-        (0, Support_1.assert)(!this.isConflicting(namedNamespace, name), `Assigned name "${name}" conflicts`);
+        assert(!this.names.has(named), `Name "${name}" assigned twice`);
+        assert(!this.isConflicting(namedNamespace, name), `Assigned name "${name}" conflicts`);
         this._names.set(named, name);
         let namedsForName = this._namedsForName.get(name);
         if (namedsForName === undefined) {
@@ -290,7 +278,7 @@ class NamingContext {
     }
 }
 // Naming algorithm
-function assignNames(rootNamespaces) {
+export function assignNames(rootNamespaces) {
     const ctx = new NamingContext(rootNamespaces);
     // Assign all fixed names.
     for (const ns of ctx.namespaces) {
@@ -305,39 +293,38 @@ function assignNames(rootNamespaces) {
         //    at least one unnamed Named that has all its dependencies satisfied.
         //    If no such namespace exists we're either done, or there's an unallowed
         //    cycle.
-        const unfinishedNamespaces = (0, collection_utils_1.setFilter)(ctx.namespaces, ns => ctx.areForbiddensFullyNamed(ns));
-        const readyNamespace = (0, collection_utils_1.iterableFind)(unfinishedNamespaces, ns => (0, collection_utils_1.iterableSome)(ns.members, member => ctx.isReadyToBeNamed(member)));
+        const unfinishedNamespaces = setFilter(ctx.namespaces, ns => ctx.areForbiddensFullyNamed(ns));
+        const readyNamespace = iterableFind(unfinishedNamespaces, ns => iterableSome(ns.members, member => ctx.isReadyToBeNamed(member)));
         if (readyNamespace === undefined) {
             // FIXME: Check for cycles?
             return ctx.names;
         }
-        const allForbiddenNames = (0, collection_utils_1.setUnion)(readyNamespace.members, readyNamespace.forbiddenNameds);
-        let forbiddenNames = (0, collection_utils_1.setFilterMap)(allForbiddenNames, n => ctx.names.get(n));
+        const allForbiddenNames = setUnion(readyNamespace.members, readyNamespace.forbiddenNameds);
+        let forbiddenNames = setFilterMap(allForbiddenNames, n => ctx.names.get(n));
         // 2. From low order to high order, sort those names into sets where all
         //    members of a set propose the same name and have the same naming
         //    function.
         for (;;) {
-            const allReadyNames = (0, collection_utils_1.setFilter)(readyNamespace.members, member => ctx.isReadyToBeNamed(member));
-            const minOrderName = (0, collection_utils_1.iterableMinBy)(allReadyNames, n => n.order);
+            const allReadyNames = setFilter(readyNamespace.members, member => ctx.isReadyToBeNamed(member));
+            const minOrderName = iterableMinBy(allReadyNames, n => n.order);
             if (minOrderName === undefined)
                 break;
             const minOrder = minOrderName.order;
-            const readyNames = (0, collection_utils_1.setFilter)(allReadyNames, n => n.order === minOrder);
+            const readyNames = setFilter(allReadyNames, n => n.order === minOrder);
             // It would be nice if we had tuples, then we wouldn't have to do this in
             // two steps.
-            const byNamingFunction = (0, collection_utils_1.setGroupBy)(readyNames, n => n.namingFunction);
+            const byNamingFunction = setGroupBy(readyNames, n => n.namingFunction);
             for (const [namer, namedsForNamingFunction] of byNamingFunction) {
-                const byProposed = (0, collection_utils_1.setGroupBy)(namedsForNamingFunction, n => n.namingFunction.nameStyle(n.firstProposedName(ctx.names)));
+                const byProposed = setGroupBy(namedsForNamingFunction, n => n.namingFunction.nameStyle(n.firstProposedName(ctx.names)));
                 for (const [, nameds] of byProposed) {
                     // 3. Use each set's naming function to name its members.
                     const names = namer.assignNames(ctx.names, forbiddenNames, nameds);
                     for (const [name, assigned] of names) {
                         ctx.assign(name, readyNamespace, assigned);
                     }
-                    (0, collection_utils_1.setUnionInto)(forbiddenNames, names.values());
+                    setUnionInto(forbiddenNames, names.values());
                 }
             }
         }
     }
 }
-exports.assignNames = assignNames;

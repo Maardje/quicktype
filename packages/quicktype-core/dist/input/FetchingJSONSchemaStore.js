@@ -1,4 +1,3 @@
-"use strict";
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -8,13 +7,11 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.FetchingJSONSchemaStore = void 0;
 // eslint-disable-next-line import/no-cycle
-const __1 = require("..");
-const NodeIO_1 = require("./io/NodeIO");
-const JSONSchemaStore_1 = require("./JSONSchemaStore");
-class FetchingJSONSchemaStore extends JSONSchemaStore_1.JSONSchemaStore {
+import { parseJSON } from "..";
+import { readFromFileOrURL } from "./io/NodeIO";
+import { JSONSchemaStore } from "./JSONSchemaStore";
+export class FetchingJSONSchemaStore extends JSONSchemaStore {
     constructor(_httpHeaders) {
         super();
         this._httpHeaders = _httpHeaders;
@@ -22,8 +19,7 @@ class FetchingJSONSchemaStore extends JSONSchemaStore_1.JSONSchemaStore {
     fetch(address) {
         return __awaiter(this, void 0, void 0, function* () {
             // console.log(`Fetching ${address}`);
-            return (0, __1.parseJSON)(yield (0, NodeIO_1.readFromFileOrURL)(address, this._httpHeaders), "JSON Schema", address);
+            return parseJSON(yield readFromFileOrURL(address, this._httpHeaders), "JSON Schema", address);
         });
     }
 }
-exports.FetchingJSONSchemaStore = FetchingJSONSchemaStore;

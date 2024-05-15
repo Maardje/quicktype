@@ -1,55 +1,48 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.ObjectiveCRenderer = exports.ObjectiveCTargetLanguage = exports.objcOptions = void 0;
-const collection_utils_1 = require("collection-utils");
-const unicode_properties_1 = __importDefault(require("unicode-properties"));
-const ConvenienceRenderer_1 = require("../ConvenienceRenderer");
-const Naming_1 = require("../Naming");
-const RendererOptions_1 = require("../RendererOptions");
-const Source_1 = require("../Source");
-const Strings_1 = require("../support/Strings");
-const Support_1 = require("../support/Support");
-const TargetLanguage_1 = require("../TargetLanguage");
-const Type_1 = require("../Type");
-const TypeUtils_1 = require("../TypeUtils");
+import { iterableFirst, iterableSome, mapContains, mapFirst, mapSome } from "collection-utils";
+import unicode from "unicode-properties";
+import { ConvenienceRenderer } from "../ConvenienceRenderer";
+import { Namer, funPrefixNamer } from "../Naming";
+import { BooleanOption, EnumOption, StringOption, getOptionValues } from "../RendererOptions";
+import { modifySource } from "../Source";
+import { addPrefixIfNecessary, allLowerWordStyle, allUpperWordStyle, camelCase, combineWords, fastIsUpperCase, firstUpperWordStyle, repeatString, splitIntoWords, stringEscape, utf16LegalizeCharacters } from "../support/Strings";
+import { assert, defined } from "../support/Support";
+import { TargetLanguage } from "../TargetLanguage";
+import { ArrayType, ClassType, EnumType, MapType, Type, UnionType } from "../Type";
+import { isAnyOrNull, matchType, nullableFromUnion } from "../TypeUtils";
 const DEBUG = false;
 const DEFAULT_CLASS_PREFIX = "QT";
-exports.objcOptions = {
-    features: new RendererOptions_1.EnumOption("features", "Interface and implementation", [
+export const objcOptions = {
+    features: new EnumOption("features", "Interface and implementation", [
         ["all", { interface: true, implementation: true }],
         ["interface", { interface: true, implementation: false }],
         ["implementation", { interface: false, implementation: true }]
     ]),
-    justTypes: new RendererOptions_1.BooleanOption("just-types", "Plain types only", false),
-    marshallingFunctions: new RendererOptions_1.BooleanOption("functions", "C-style functions", false),
-    classPrefix: new RendererOptions_1.StringOption("class-prefix", "Class prefix", "PREFIX", DEFAULT_CLASS_PREFIX),
-    extraComments: new RendererOptions_1.BooleanOption("extra-comments", "Extra comments", false)
+    justTypes: new BooleanOption("just-types", "Plain types only", false),
+    marshallingFunctions: new BooleanOption("functions", "C-style functions", false),
+    classPrefix: new StringOption("class-prefix", "Class prefix", "PREFIX", DEFAULT_CLASS_PREFIX),
+    extraComments: new BooleanOption("extra-comments", "Extra comments", false)
 };
-class ObjectiveCTargetLanguage extends TargetLanguage_1.TargetLanguage {
+export class ObjectiveCTargetLanguage extends TargetLanguage {
     constructor() {
         super("Objective-C", ["objc", "objective-c", "objectivec"], "m");
     }
     getOptions() {
         return [
-            exports.objcOptions.justTypes,
-            exports.objcOptions.classPrefix,
-            exports.objcOptions.features,
-            exports.objcOptions.extraComments,
-            exports.objcOptions.marshallingFunctions
+            objcOptions.justTypes,
+            objcOptions.classPrefix,
+            objcOptions.features,
+            objcOptions.extraComments,
+            objcOptions.marshallingFunctions
         ];
     }
     makeRenderer(renderContext, untypedOptionValues) {
-        return new ObjectiveCRenderer(this, renderContext, (0, RendererOptions_1.getOptionValues)(exports.objcOptions, untypedOptionValues));
+        return new ObjectiveCRenderer(this, renderContext, getOptionValues(objcOptions, untypedOptionValues));
     }
 }
-exports.ObjectiveCTargetLanguage = ObjectiveCTargetLanguage;
 function typeNameStyle(prefix, original) {
-    const words = (0, Strings_1.splitIntoWords)(original);
-    const result = (0, Strings_1.combineWords)(words, legalizeName, Strings_1.firstUpperWordStyle, Strings_1.firstUpperWordStyle, Strings_1.allUpperWordStyle, Strings_1.allUpperWordStyle, "", isStartCharacter);
-    return (0, Strings_1.addPrefixIfNecessary)(prefix, result);
+    const words = splitIntoWords(original);
+    const result = combineWords(words, legalizeName, firstUpperWordStyle, firstUpperWordStyle, allUpperWordStyle, allUpperWordStyle, "", isStartCharacter);
+    return addPrefixIfNecessary(prefix, result);
 }
 function propertyNameStyle(original, isBool = false) {
     // Objective-C developers are uncomfortable with property "id"
@@ -57,7 +50,7 @@ function propertyNameStyle(original, isBool = false) {
     if (original === "id") {
         original = "identifier";
     }
-    let words = (0, Strings_1.splitIntoWords)(original);
+    let words = splitIntoWords(original);
     if (isBool) {
         if (words.length === 0) {
             words = [{ word: "flag", isAcronym: false }];
@@ -71,7 +64,7 @@ function propertyNameStyle(original, isBool = false) {
     if (words.length > 0 && forbiddenPropertyNames.includes(words[0].word)) {
         words = [{ word: "the", isAcronym: false }, ...words];
     }
-    return (0, Strings_1.combineWords)(words, legalizeName, Strings_1.allLowerWordStyle, Strings_1.firstUpperWordStyle, Strings_1.allLowerWordStyle, Strings_1.allUpperWordStyle, "", isStartCharacter);
+    return combineWords(words, legalizeName, allLowerWordStyle, firstUpperWordStyle, allLowerWordStyle, allUpperWordStyle, "", isStartCharacter);
 }
 const keywords = [
     /*
@@ -154,13 +147,13 @@ const booleanPrefixes = [
     "need"
 ];
 function isStartCharacter(utf16Unit) {
-    return unicode_properties_1.default.isAlphabetic(utf16Unit) || utf16Unit === 0x5f; // underscore
+    return unicode.isAlphabetic(utf16Unit) || utf16Unit === 0x5f; // underscore
 }
 function isPartCharacter(utf16Unit) {
-    const category = unicode_properties_1.default.getCategory(utf16Unit);
+    const category = unicode.getCategory(utf16Unit);
     return ["Nd", "Pc", "Mn", "Mc"].includes(category) || isStartCharacter(utf16Unit);
 }
-const legalizeName = (0, Strings_1.utf16LegalizeCharacters)(isPartCharacter);
+const legalizeName = utf16LegalizeCharacters(isPartCharacter);
 const staticEnumValuesIdentifier = "values";
 const forbiddenForEnumCases = ["new", staticEnumValuesIdentifier];
 function splitExtension(filename) {
@@ -169,13 +162,13 @@ function splitExtension(filename) {
     filename = i !== -1 ? filename.slice(0, i) : filename;
     return [filename, extension !== null && extension !== void 0 ? extension : "m"];
 }
-class ObjectiveCRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
+export class ObjectiveCRenderer extends ConvenienceRenderer {
     constructor(targetLanguage, renderContext, _options) {
         super(targetLanguage, renderContext);
         this._options = _options;
         // Infer the class prefix from a top-level name if it's not given
         if (_options.classPrefix === DEFAULT_CLASS_PREFIX) {
-            const aTopLevel = (0, Support_1.defined)((0, collection_utils_1.iterableFirst)(this.topLevels.keys()));
+            const aTopLevel = defined(iterableFirst(this.topLevels.keys()));
             this._classPrefix = this.inferClassPrefix(aTopLevel);
         }
         else {
@@ -185,7 +178,7 @@ class ObjectiveCRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     inferClassPrefix(name) {
         const l = name.length;
         let firstNonUpper = 0;
-        while (firstNonUpper < l && (0, Strings_1.fastIsUpperCase)(name.charCodeAt(firstNonUpper))) {
+        while (firstNonUpper < l && fastIsUpperCase(name.charCodeAt(firstNonUpper))) {
             firstNonUpper += 1;
         }
         if (firstNonUpper < 2)
@@ -202,11 +195,11 @@ class ObjectiveCRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return { names: forbiddenForEnumCases, includeGlobalForbidden: true };
     }
     makeNamedTypeNamer() {
-        return (0, Naming_1.funPrefixNamer)("types", rawName => typeNameStyle(this._classPrefix, rawName));
+        return funPrefixNamer("types", rawName => typeNameStyle(this._classPrefix, rawName));
     }
     namerForObjectProperty(_, p) {
         // TODO why is underscore being removed?
-        return new Naming_1.Namer("properties", s => propertyNameStyle(s, p.type.kind === "bool"), [
+        return new Namer("properties", s => propertyNameStyle(s, p.type.kind === "bool"), [
             "_",
             "the",
             "one",
@@ -218,7 +211,7 @@ class ObjectiveCRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return null;
     }
     makeEnumCaseNamer() {
-        return new Naming_1.Namer("enum-cases", propertyNameStyle, []);
+        return new Namer("enum-cases", propertyNameStyle, []);
     }
     namedTypeToNameForTopLevel(type) {
         return type;
@@ -245,52 +238,52 @@ class ObjectiveCRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         }
     }
     startFile(basename, extension) {
-        (0, Support_1.assert)(this._currentFilename === undefined, "Previous file wasn't finished");
+        assert(this._currentFilename === undefined, "Previous file wasn't finished");
         // FIXME: The filenames should actually be Sourcelikes, too
         this._currentFilename = `${this.sourcelikeToString(basename)}.${extension}`;
     }
     finishFile() {
-        super.finishFile((0, Support_1.defined)(this._currentFilename));
+        super.finishFile(defined(this._currentFilename));
         this._currentFilename = undefined;
     }
     memoryAttribute(t, isNullable) {
-        return (0, TypeUtils_1.matchType)(t, _anyType => "copy", _nullType => "copy", _boolType => (isNullable ? "strong" : "assign"), _integerType => (isNullable ? "strong" : "assign"), _doubleType => (isNullable ? "strong" : "assign"), _stringType => "copy", _arrayType => "copy", _classType => "strong", _mapType => "copy", _enumType => "assign", unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+        return matchType(t, _anyType => "copy", _nullType => "copy", _boolType => (isNullable ? "strong" : "assign"), _integerType => (isNullable ? "strong" : "assign"), _doubleType => (isNullable ? "strong" : "assign"), _stringType => "copy", _arrayType => "copy", _classType => "strong", _mapType => "copy", _enumType => "assign", unionType => {
+            const nullable = nullableFromUnion(unionType);
             return nullable !== null ? this.memoryAttribute(nullable, true) : "copy";
         });
     }
     objcType(t, nullableOrBoxed = false) {
-        return (0, TypeUtils_1.matchType)(t, _anyType => ["id", ""], 
+        return matchType(t, _anyType => ["id", ""], 
         // For now, we're treating nulls just like any
         _nullType => ["id", ""], _boolType => (nullableOrBoxed ? ["NSNumber", " *"] : ["BOOL", ""]), _integerType => (nullableOrBoxed ? ["NSNumber", " *"] : ["NSInteger", ""]), _doubleType => (nullableOrBoxed ? ["NSNumber", " *"] : ["double", ""]), _stringType => ["NSString", " *"], arrayType => {
             const itemType = arrayType.items;
             const itemTypeName = this.objcType(itemType, true);
             // NSArray<id>* === NSArray*
-            if ((0, TypeUtils_1.isAnyOrNull)(itemType)) {
+            if (isAnyOrNull(itemType)) {
                 return ["NSArray", " *"];
             }
             return [["NSArray<", itemTypeName, ">"], " *"];
         }, classType => [this.nameForNamedType(classType), " *"], mapType => [["NSDictionary<NSString *, ", this.objcType(mapType.values, true), ">"], " *"], enumType => [this.nameForNamedType(enumType), " *"], unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+            const nullable = nullableFromUnion(unionType);
             return nullable !== null ? this.objcType(nullable, true) : ["id", ""];
         });
     }
     jsonType(t) {
-        return (0, TypeUtils_1.matchType)(t, _anyType => ["id", ""], 
+        return matchType(t, _anyType => ["id", ""], 
         // For now, we're treating nulls just like any
         _nullType => ["id", ""], _boolType => ["NSNumber", " *"], _integerType => ["NSNumber", " *"], _doubleType => ["NSNumber", " *"], _stringType => ["NSString", " *"], _arrayType => ["NSArray", " *"], _classType => ["NSDictionary<NSString *, id>", " *"], mapType => [["NSDictionary<NSString *, ", this.jsonType(mapType.values), ">"], " *"], _enumType => ["NSString", " *"], unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+            const nullable = nullableFromUnion(unionType);
             return nullable !== null ? this.jsonType(nullable) : ["id", ""];
         });
     }
     fromDynamicExpression(t, ...dynamic) {
-        return (0, TypeUtils_1.matchType)(t, _anyType => dynamic, _nullType => dynamic, _boolType => dynamic, _integerType => dynamic, _doubleType => dynamic, _stringType => dynamic, arrayType => ["map(", dynamic, ", λ(id x, ", this.fromDynamicExpression(arrayType.items, "x"), "))"], classType => ["[", this.nameForNamedType(classType), " fromJSONDictionary:", dynamic, "]"], mapType => ["map(", dynamic, ", λ(id x, ", this.fromDynamicExpression(mapType.values, "x"), "))"], enumType => ["[", this.nameForNamedType(enumType), " withValue:", dynamic, "]"], unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+        return matchType(t, _anyType => dynamic, _nullType => dynamic, _boolType => dynamic, _integerType => dynamic, _doubleType => dynamic, _stringType => dynamic, arrayType => ["map(", dynamic, ", λ(id x, ", this.fromDynamicExpression(arrayType.items, "x"), "))"], classType => ["[", this.nameForNamedType(classType), " fromJSONDictionary:", dynamic, "]"], mapType => ["map(", dynamic, ", λ(id x, ", this.fromDynamicExpression(mapType.values, "x"), "))"], enumType => ["[", this.nameForNamedType(enumType), " withValue:", dynamic, "]"], unionType => {
+            const nullable = nullableFromUnion(unionType);
             return nullable !== null ? this.fromDynamicExpression(nullable, dynamic) : dynamic;
         });
     }
     toDynamicExpression(t, typed) {
-        return (0, TypeUtils_1.matchType)(t, _anyType => ["NSNullify(", typed, ")"], _nullType => ["NSNullify(", typed, ")"], 
+        return matchType(t, _anyType => ["NSNullify(", typed, ")"], _nullType => ["NSNullify(", typed, ")"], 
         // Sadly, KVC
         _boolType => [typed, " ? @YES : @NO"], _integerType => typed, _doubleType => typed, _stringType => typed, arrayType => {
             if (this.implicitlyConvertsFromJSON(arrayType)) {
@@ -305,7 +298,7 @@ class ObjectiveCRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             }
             return ["map(", typed, ", λ(id x, ", this.toDynamicExpression(mapType.values, "x"), "))"];
         }, _enumType => ["[", typed, " value]"], unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null) {
                 if (this.implicitlyConvertsFromJSON(nullable)) {
                     return ["NSNullify(", typed, ")"];
@@ -321,23 +314,23 @@ class ObjectiveCRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         });
     }
     implicitlyConvertsFromJSON(t) {
-        if (t instanceof Type_1.ClassType) {
+        if (t instanceof ClassType) {
             return false;
         }
-        else if (t instanceof Type_1.EnumType) {
+        else if (t instanceof EnumType) {
             return false;
         }
-        else if (t instanceof Type_1.ArrayType) {
+        else if (t instanceof ArrayType) {
             return this.implicitlyConvertsFromJSON(t.items);
         }
-        else if (t instanceof Type_1.MapType) {
+        else if (t instanceof MapType) {
             return this.implicitlyConvertsFromJSON(t.values);
         }
         else if (t.isPrimitive()) {
             return true;
         }
-        else if (t instanceof Type_1.UnionType) {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(t);
+        else if (t instanceof UnionType) {
+            const nullable = nullableFromUnion(t);
             if (nullable !== null) {
                 return this.implicitlyConvertsFromJSON(nullable);
             }
@@ -355,11 +348,11 @@ class ObjectiveCRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     }
     emitPropertyAssignment(propertyName, jsonName, propertyType) {
         const name = ["_", propertyName];
-        (0, TypeUtils_1.matchType)(propertyType, anyType => this.emitLine(name, " = ", this.fromDynamicExpression(anyType, name), ";"), nullType => this.emitLine(name, " = ", this.fromDynamicExpression(nullType, name), ";"), boolType => this.emitLine(name, " = ", this.fromDynamicExpression(boolType, name), ";"), integerType => this.emitLine(name, " = ", this.fromDynamicExpression(integerType, name), ";"), doubleType => this.emitLine(name, " = ", this.fromDynamicExpression(doubleType, name), ";"), stringType => this.emitLine(name, " = ", this.fromDynamicExpression(stringType, name), ";"), arrayType => this.emitLine(name, " = ", this.fromDynamicExpression(arrayType, name), ";"), classType => this.emitLine(name, " = ", this.fromDynamicExpression(classType, ["(id)", name]), ";"), mapType => {
+        matchType(propertyType, anyType => this.emitLine(name, " = ", this.fromDynamicExpression(anyType, name), ";"), nullType => this.emitLine(name, " = ", this.fromDynamicExpression(nullType, name), ";"), boolType => this.emitLine(name, " = ", this.fromDynamicExpression(boolType, name), ";"), integerType => this.emitLine(name, " = ", this.fromDynamicExpression(integerType, name), ";"), doubleType => this.emitLine(name, " = ", this.fromDynamicExpression(doubleType, name), ";"), stringType => this.emitLine(name, " = ", this.fromDynamicExpression(stringType, name), ";"), arrayType => this.emitLine(name, " = ", this.fromDynamicExpression(arrayType, name), ";"), classType => this.emitLine(name, " = ", this.fromDynamicExpression(classType, ["(id)", name]), ";"), mapType => {
             const itemType = mapType.values;
             this.emitLine(name, " = map(", name, ", ", ["λ(id x, ", this.fromDynamicExpression(itemType, "x"), ")"], ");");
         }, enumType => this.emitLine(name, " = ", this.fromDynamicExpression(enumType, ["(id)", name]), ";"), unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null) {
                 this.emitPropertyAssignment(propertyName, jsonName, nullable);
             }
@@ -376,7 +369,7 @@ class ObjectiveCRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         this.emitLine("@end");
     }
     pointerAwareTypeName(t) {
-        const name = t instanceof Type_1.Type ? this.objcType(t) : t;
+        const name = t instanceof Type ? this.objcType(t) : t;
         const isPointer = name[1] !== "";
         return isPointer ? name : [name, " "];
     }
@@ -392,12 +385,12 @@ class ObjectiveCRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     }
     topLevelToDataPrototype(name, pad = false) {
         const parameter = this.variableNameForTopLevel(name);
-        const padding = pad ? (0, Strings_1.repeatString)(" ", this.sourcelikeToString(name).length - "NSData".length) : "";
+        const padding = pad ? repeatString(" ", this.sourcelikeToString(name).length - "NSData".length) : "";
         return ["NSData", padding, " *_Nullable ", name, "ToData(", name, " *", parameter, ", NSError **error)"];
     }
     topLevelToJSONPrototype(name, pad = false) {
         const parameter = this.variableNameForTopLevel(name);
-        const padding = pad ? (0, Strings_1.repeatString)(" ", this.sourcelikeToString(name).length - "NSString".length) : "";
+        const padding = pad ? repeatString(" ", this.sourcelikeToString(name).length - "NSString".length) : "";
         return [
             "NSString",
             padding,
@@ -454,7 +447,7 @@ class ObjectiveCRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         });
     }
     emitClassInterface(t, className) {
-        const isTopLevel = (0, collection_utils_1.mapContains)(this.topLevels, t);
+        const isTopLevel = mapContains(this.topLevels, t);
         this.emitDescription(this.descriptionForType(t));
         this.emitLine("@interface ", className, " : NSObject");
         if (DEBUG)
@@ -485,7 +478,7 @@ class ObjectiveCRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     hasIrregularProperties(t) {
         let irregular = false;
         this.forEachClassProperty(t, "none", (name, jsonName) => {
-            irregular = irregular || (0, Strings_1.stringEscape)(jsonName) !== this.sourcelikeToString(name);
+            irregular = irregular || stringEscape(jsonName) !== this.sourcelikeToString(name);
         });
         return irregular;
     }
@@ -498,7 +491,7 @@ class ObjectiveCRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     }
     // TODO Implement NSCopying
     emitClassImplementation(t, className) {
-        const isTopLevel = (0, collection_utils_1.mapContains)(this.topLevels, t);
+        const isTopLevel = mapContains(this.topLevels, t);
         const hasIrregularProperties = this.hasIrregularProperties(t);
         const hasUnsafeProperties = this.hasUnsafeProperties(t);
         this.emitLine("@implementation ", className);
@@ -507,7 +500,7 @@ class ObjectiveCRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 this.emitLine("static NSDictionary<NSString *, NSString *> *properties;");
                 this.emitLine("return properties = properties ? properties : @{");
                 this.indent(() => {
-                    this.forEachClassProperty(t, "none", (name, jsonName) => this.emitLine(`@"${(0, Strings_1.stringEscape)(jsonName)}": @"`, name, '",'));
+                    this.forEachClassProperty(t, "none", (name, jsonName) => this.emitLine(`@"${stringEscape(jsonName)}": @"`, name, '",'));
                 });
                 this.emitLine("};");
             });
@@ -577,7 +570,7 @@ class ObjectiveCRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                     this.indent(() => {
                         this.forEachClassProperty(t, "none", (propertyName, jsonKey, property) => {
                             if (!this.implicitlyConvertsToJSON(property.type)) {
-                                const key = (0, Strings_1.stringEscape)(jsonKey);
+                                const key = stringEscape(jsonKey);
                                 const name = ["_", propertyName];
                                 this.emitLine('@"', key, '": ', this.toDynamicExpression(property.type, name), ",");
                             }
@@ -607,11 +600,11 @@ class ObjectiveCRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         this.ensureBlankLine();
     }
     variableNameForTopLevel(name) {
-        const camelCaseName = (0, Source_1.modifySource)(serialized => {
+        const camelCaseName = modifySource(serialized => {
             // 1. remove class prefix
             serialized = serialized.slice(this._classPrefix.length);
             // 2. camel case
-            return (0, Strings_1.camelCase)(serialized);
+            return camelCase(serialized);
         }, name);
         return camelCaseName;
     }
@@ -633,7 +626,7 @@ class ObjectiveCRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             this.emitLine("return ", staticEnumValuesIdentifier, " = ", staticEnumValuesIdentifier, " ? ", staticEnumValuesIdentifier, " : @{");
             this.indent(() => {
                 this.forEachEnumCase(enumType, "none", (_, jsonValue) => {
-                    const value = ['@"', (0, Strings_1.stringEscape)(jsonValue), '"'];
+                    const value = ['@"', stringEscape(jsonValue), '"'];
                     this.emitLine(value, ": [[", enumName, " alloc] initWithValue:", value, "],");
                 });
             });
@@ -641,7 +634,7 @@ class ObjectiveCRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         });
         this.ensureBlankLine();
         this.forEachEnumCase(enumType, "none", (name, jsonValue) => {
-            this.emitLine("+ (", enumName, " *)", name, " { return ", instances, '[@"', (0, Strings_1.stringEscape)(jsonValue), '"]; }');
+            this.emitLine("+ (", enumName, " *)", name, " { return ", instances, '[@"', stringEscape(jsonValue), '"]; }');
         });
         this.ensureBlankLine();
         this.emitMethod("+ (instancetype _Nullable)withValue:(NSString *)value", () => this.emitLine("return ", instances, "[value];"));
@@ -658,7 +651,7 @@ class ObjectiveCRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         const fileMode = proposedFilename !== "stdout";
         if (!fileMode) {
             // We don't have a filename, so we use a top-level name
-            const firstTopLevel = (0, Support_1.defined)((0, collection_utils_1.mapFirst)(this.topLevels));
+            const firstTopLevel = defined(mapFirst(this.topLevels));
             proposedFilename = this.sourcelikeToString(this.nameForNamedType(firstTopLevel)) + ".m";
         }
         const [filename, extension] = splitExtension(proposedFilename);
@@ -671,7 +664,7 @@ class ObjectiveCRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 this.emitCommentLines(["To parse this JSON:", ""]);
                 this.emitLine("//   NSError *error;");
                 this.forEachTopLevel("none", (t, topLevelName) => {
-                    const fromJsonExpression = t instanceof Type_1.ClassType
+                    const fromJsonExpression = t instanceof ClassType
                         ? ["[", topLevelName, " fromJSON:json encoding:NSUTF8Encoding error:&error];"]
                         : [topLevelName, "FromJSON(json, NSUTF8Encoding, &error);"];
                     this.emitLine("//   ", topLevelName, " *", this.variableNameForTopLevel(topLevelName), " = ", fromJsonExpression);
@@ -691,15 +684,15 @@ class ObjectiveCRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 this.forEachEnum("leading-and-interposing", (t, n) => this.emitPseudoEnumInterface(t, n));
             }
             // Emit interfaces for top-level array+maps and classes
-            this.forEachTopLevel("leading-and-interposing", (t, n) => this.emitNonClassTopLevelTypedef(t, n), t => !(t instanceof Type_1.ClassType));
-            const hasTopLevelNonClassTypes = (0, collection_utils_1.iterableSome)(this.topLevels, ([_, t]) => !(t instanceof Type_1.ClassType));
+            this.forEachTopLevel("leading-and-interposing", (t, n) => this.emitNonClassTopLevelTypedef(t, n), t => !(t instanceof ClassType));
+            const hasTopLevelNonClassTypes = iterableSome(this.topLevels, ([_, t]) => !(t instanceof ClassType));
             if (!this._options.justTypes && (hasTopLevelNonClassTypes || this._options.marshallingFunctions)) {
                 this.ensureBlankLine();
                 this.emitMark("Top-level marshaling functions");
                 this.forEachTopLevel("leading-and-interposing", (t, n) => this.emitTopLevelFunctionDeclarations(t, n), 
                 // Objective-C developers get freaked out by C functions, so we don't
                 // declare them for top-level object types (we always need them for non-object types)
-                t => this._options.marshallingFunctions || !(t instanceof Type_1.ClassType));
+                t => this._options.marshallingFunctions || !(t instanceof ClassType));
             }
             this.emitMark("Object interfaces");
             this.forEachNamedType("leading-and-interposing", (c, className) => this.emitClassInterface(c, className), () => null, () => null);
@@ -752,11 +745,11 @@ class ObjectiveCRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     get needsMap() {
         // TODO this isn't complete (needs union support, for example)
         function needsMap(t) {
-            return (t instanceof Type_1.MapType ||
-                t instanceof Type_1.ArrayType ||
-                (t instanceof Type_1.ClassType && (0, collection_utils_1.mapSome)(t.getProperties(), p => needsMap(p.type))));
+            return (t instanceof MapType ||
+                t instanceof ArrayType ||
+                (t instanceof ClassType && mapSome(t.getProperties(), p => needsMap(p.type))));
         }
-        return (0, collection_utils_1.iterableSome)(this.typeGraph.allTypesUnordered(), needsMap);
+        return iterableSome(this.typeGraph.allTypesUnordered(), needsMap);
     }
     emitMapFunction() {
         if (this.needsMap) {
@@ -774,4 +767,3 @@ class ObjectiveCRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         }
     }
 }
-exports.ObjectiveCRenderer = ObjectiveCRenderer;

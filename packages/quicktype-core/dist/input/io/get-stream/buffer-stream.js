@@ -1,8 +1,6 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
 /* eslint-disable @typescript-eslint/no-explicit-any */
-const readable_stream_1 = require("readable-stream");
-function bufferStream(opts) {
+import { PassThrough } from "readable-stream";
+export default function bufferStream(opts) {
     opts = Object.assign({}, opts);
     const array = opts.array;
     let encoding = opts.encoding;
@@ -21,7 +19,7 @@ function bufferStream(opts) {
     }
     let len = 0;
     const ret = [];
-    const stream = new readable_stream_1.PassThrough({
+    const stream = new PassThrough({
         objectMode
     });
     if (encoding) {
@@ -45,4 +43,3 @@ function bufferStream(opts) {
     stream.getBufferedLength = () => len;
     return stream;
 }
-exports.default = bufferStream;

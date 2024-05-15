@@ -1,65 +1,39 @@
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.RubyRenderer = exports.RubyTargetLanguage = exports.rubyOptions = exports.Strictness = void 0;
-const unicode = __importStar(require("unicode-properties"));
-const ConvenienceRenderer_1 = require("../../ConvenienceRenderer");
-const Naming_1 = require("../../Naming");
-const RendererOptions_1 = require("../../RendererOptions");
-const Source_1 = require("../../Source");
-const Strings_1 = require("../../support/Strings");
-const TargetLanguage_1 = require("../../TargetLanguage");
-const Type_1 = require("../../Type");
-const TypeUtils_1 = require("../../TypeUtils");
-const keywords = __importStar(require("./keywords"));
+import * as unicode from "unicode-properties";
+import { ConvenienceRenderer } from "../../ConvenienceRenderer";
+import { Namer } from "../../Naming";
+import { BooleanOption, EnumOption, StringOption, getOptionValues } from "../../RendererOptions";
+import { modifySource } from "../../Source";
+import { allLowerWordStyle, allUpperWordStyle, combineWords, escapeNonPrintableMapper, firstUpperWordStyle, intToHex, isLetterOrUnderscore, isPrintable, legalizeCharacters, snakeCase, splitIntoWords, utf32ConcatMap } from "../../support/Strings";
+import { TargetLanguage } from "../../TargetLanguage";
+import { ArrayType, ClassType, MapType } from "../../Type";
+import { matchType, nullableFromUnion, removeNullFromUnion } from "../../TypeUtils";
+import * as keywords from "./keywords";
 const forbiddenForObjectProperties = Array.from(new Set([...keywords.keywords, ...keywords.reservedProperties]));
 function unicodeEscape(codePoint) {
-    return "\\u{" + (0, Strings_1.intToHex)(codePoint, 0) + "}";
+    return "\\u{" + intToHex(codePoint, 0) + "}";
 }
-const stringEscape = (0, Strings_1.utf32ConcatMap)((0, Strings_1.escapeNonPrintableMapper)(Strings_1.isPrintable, unicodeEscape));
-var Strictness;
+const stringEscape = utf32ConcatMap(escapeNonPrintableMapper(isPrintable, unicodeEscape));
+export var Strictness;
 (function (Strictness) {
     Strictness["Coercible"] = "Coercible::";
     Strictness["None"] = "Types::";
     Strictness["Strict"] = "Strict::";
-})(Strictness = exports.Strictness || (exports.Strictness = {}));
-exports.rubyOptions = {
-    justTypes: new RendererOptions_1.BooleanOption("just-types", "Plain types only", false),
-    strictness: new RendererOptions_1.EnumOption("strictness", "Type strictness", [
+})(Strictness || (Strictness = {}));
+export const rubyOptions = {
+    justTypes: new BooleanOption("just-types", "Plain types only", false),
+    strictness: new EnumOption("strictness", "Type strictness", [
         ["strict", Strictness.Strict],
         ["coercible", Strictness.Coercible],
         ["none", Strictness.None]
     ]),
-    namespace: new RendererOptions_1.StringOption("namespace", "Specify a wrapping Namespace", "NAME", "", "secondary")
+    namespace: new StringOption("namespace", "Specify a wrapping Namespace", "NAME", "", "secondary")
 };
-class RubyTargetLanguage extends TargetLanguage_1.TargetLanguage {
+export class RubyTargetLanguage extends TargetLanguage {
     constructor() {
         super("Ruby", ["ruby"], "rb");
     }
     getOptions() {
-        return [exports.rubyOptions.justTypes, exports.rubyOptions.strictness, exports.rubyOptions.namespace];
+        return [rubyOptions.justTypes, rubyOptions.strictness, rubyOptions.namespace];
     }
     get supportsOptionalClassProperties() {
         return true;
@@ -68,28 +42,27 @@ class RubyTargetLanguage extends TargetLanguage_1.TargetLanguage {
         return "  ";
     }
     makeRenderer(renderContext, untypedOptionValues) {
-        return new RubyRenderer(this, renderContext, (0, RendererOptions_1.getOptionValues)(exports.rubyOptions, untypedOptionValues));
+        return new RubyRenderer(this, renderContext, getOptionValues(rubyOptions, untypedOptionValues));
     }
 }
-exports.RubyTargetLanguage = RubyTargetLanguage;
-const isStartCharacter = Strings_1.isLetterOrUnderscore;
+const isStartCharacter = isLetterOrUnderscore;
 function isPartCharacter(utf16Unit) {
     const category = unicode.getCategory(utf16Unit);
     return ["Nd", "Pc", "Mn", "Mc"].includes(category) || isStartCharacter(utf16Unit);
 }
-const legalizeName = (0, Strings_1.legalizeCharacters)(isPartCharacter);
+const legalizeName = legalizeCharacters(isPartCharacter);
 function simpleNameStyle(original, uppercase) {
     if (/^[0-9]+$/.test(original)) {
         original = original + "N";
     }
-    const words = (0, Strings_1.splitIntoWords)(original);
-    return (0, Strings_1.combineWords)(words, legalizeName, uppercase ? Strings_1.firstUpperWordStyle : Strings_1.allLowerWordStyle, uppercase ? Strings_1.firstUpperWordStyle : Strings_1.allLowerWordStyle, Strings_1.allUpperWordStyle, Strings_1.allUpperWordStyle, "", isStartCharacter);
+    const words = splitIntoWords(original);
+    return combineWords(words, legalizeName, uppercase ? firstUpperWordStyle : allLowerWordStyle, uppercase ? firstUpperWordStyle : allLowerWordStyle, allUpperWordStyle, allUpperWordStyle, "", isStartCharacter);
 }
 function memberNameStyle(original) {
-    const words = (0, Strings_1.splitIntoWords)(original);
-    return (0, Strings_1.combineWords)(words, legalizeName, Strings_1.allLowerWordStyle, Strings_1.allLowerWordStyle, Strings_1.allLowerWordStyle, Strings_1.allLowerWordStyle, "_", isStartCharacter);
+    const words = splitIntoWords(original);
+    return combineWords(words, legalizeName, allLowerWordStyle, allLowerWordStyle, allLowerWordStyle, allLowerWordStyle, "_", isStartCharacter);
 }
-class RubyRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
+export class RubyRenderer extends ConvenienceRenderer {
     constructor(targetLanguage, renderContext, _options) {
         super(targetLanguage, renderContext);
         this._options = _options;
@@ -110,21 +83,21 @@ class RubyRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return { names: forbiddenForObjectProperties, includeGlobalForbidden: true };
     }
     makeNamedTypeNamer() {
-        return new Naming_1.Namer("types", n => simpleNameStyle(n, true), []);
+        return new Namer("types", n => simpleNameStyle(n, true), []);
     }
     namerForObjectProperty() {
-        return new Naming_1.Namer("properties", memberNameStyle, []);
+        return new Namer("properties", memberNameStyle, []);
     }
     makeUnionMemberNamer() {
-        return new Naming_1.Namer("properties", memberNameStyle, []);
+        return new Namer("properties", memberNameStyle, []);
     }
     makeEnumCaseNamer() {
-        return new Naming_1.Namer("enum-cases", n => simpleNameStyle(n, true), []);
+        return new Namer("enum-cases", n => simpleNameStyle(n, true), []);
     }
     dryType(t, isOptional = false) {
         const optional = isOptional ? ".optional" : "";
-        return (0, TypeUtils_1.matchType)(t, _anyType => ["Types::Any", optional], _nullType => ["Types::Nil", optional], _boolType => ["Types::Bool", optional], _integerType => ["Types::Integer", optional], _doubleType => ["Types::Double", optional], _stringType => ["Types::String", optional], arrayType => ["Types.Array(", this.dryType(arrayType.items), ")", optional], classType => [this.nameForNamedType(classType), optional], mapType => ["Types::Hash.meta(of: ", this.dryType(mapType.values), ")", optional], enumType => ["Types::", this.nameForNamedType(enumType), optional], unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+        return matchType(t, _anyType => ["Types::Any", optional], _nullType => ["Types::Nil", optional], _boolType => ["Types::Bool", optional], _integerType => ["Types::Integer", optional], _doubleType => ["Types::Double", optional], _stringType => ["Types::String", optional], arrayType => ["Types.Array(", this.dryType(arrayType.items), ")", optional], classType => [this.nameForNamedType(classType), optional], mapType => ["Types::Hash.meta(of: ", this.dryType(mapType.values), ")", optional], enumType => ["Types::", this.nameForNamedType(enumType), optional], unionType => {
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null) {
                 return [this.dryType(nullable), ".optional"];
             }
@@ -136,7 +109,7 @@ class RubyRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             return exp;
         }
         const safeNav = optional ? "&" : "";
-        return (0, TypeUtils_1.matchType)(t, _anyType => exp, _nullType => [exp, ".nil?"], _boolType => exp, _integerType => [exp, ".even?"], _doubleType => exp, _stringType => exp, arrayType => this.exampleUse(arrayType.items, [exp, safeNav, ".first"], depth), classType => {
+        return matchType(t, _anyType => exp, _nullType => [exp, ".nil?"], _boolType => exp, _integerType => [exp, ".even?"], _doubleType => exp, _stringType => exp, arrayType => this.exampleUse(arrayType.items, [exp, safeNav, ".first"], depth), classType => {
             let info;
             this.forEachClassProperty(classType, "none", (name, _json, prop) => {
                 if (["class", "map", "array"].includes(prop.type.kind)) {
@@ -163,7 +136,7 @@ class RubyRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             }
             return exp;
         }, unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null) {
                 if (["class", "map", "array"].includes(nullable.kind)) {
                     return this.exampleUse(nullable, exp, depth, true);
@@ -175,13 +148,13 @@ class RubyRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     }
     jsonSample(t) {
         function inner() {
-            if (t instanceof Type_1.ArrayType) {
+            if (t instanceof ArrayType) {
                 return "[…]";
             }
-            else if (t instanceof Type_1.MapType) {
+            else if (t instanceof MapType) {
                 return "{…}";
             }
-            else if (t instanceof Type_1.ClassType) {
+            else if (t instanceof ClassType) {
                 return "{…}";
             }
             else {
@@ -194,7 +167,7 @@ class RubyRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         const primitiveCast = [this.dryType(t, optional), "[", e, "]"];
         const primitive = castPrimitives ? primitiveCast : e;
         const safeAccess = optional ? "&" : "";
-        return (0, TypeUtils_1.matchType)(t, _anyType => primitive, _nullType => primitive, _boolType => primitive, _integerType => primitive, _doubleType => primitive, _stringType => primitive, arrayType => [e, safeAccess, ".map { |x| ", this.fromDynamic(arrayType.items, "x", false, true), " }"], classType => {
+        return matchType(t, _anyType => primitive, _nullType => primitive, _boolType => primitive, _integerType => primitive, _doubleType => primitive, _stringType => primitive, arrayType => [e, safeAccess, ".map { |x| ", this.fromDynamic(arrayType.items, "x", false, true), " }"], classType => {
             const expression = [this.nameForNamedType(classType), ".from_dynamic!(", e, ")"];
             return optional ? [e, " ? ", expression, " : nil"] : expression;
         }, mapType => [
@@ -209,7 +182,7 @@ class RubyRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             const expression = ["Types::", this.nameForNamedType(enumType), "[", e, "]"];
             return optional ? [e, ".nil? ? nil : ", expression] : expression;
         }, unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null) {
                 return this.fromDynamic(nullable, e, true);
             }
@@ -221,8 +194,8 @@ class RubyRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         if (this.marshalsImplicitlyToDynamic(t)) {
             return e;
         }
-        return (0, TypeUtils_1.matchType)(t, _anyType => e, _nullType => e, _boolType => e, _integerType => e, _doubleType => e, _stringType => e, arrayType => [e, optional ? "&" : "", ".map { |x| ", this.toDynamic(arrayType.items, "x"), " }"], _classType => [e, optional ? "&" : "", ".to_dynamic"], mapType => [e, optional ? "&" : "", ".map { |k, v| [k, ", this.toDynamic(mapType.values, "v"), "] }.to_h"], _enumType => e, unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+        return matchType(t, _anyType => e, _nullType => e, _boolType => e, _integerType => e, _doubleType => e, _stringType => e, arrayType => [e, optional ? "&" : "", ".map { |x| ", this.toDynamic(arrayType.items, "x"), " }"], _classType => [e, optional ? "&" : "", ".to_dynamic"], mapType => [e, optional ? "&" : "", ".map { |k, v| [k, ", this.toDynamic(mapType.values, "v"), "] }.to_h"], _enumType => e, unionType => {
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null) {
                 return this.toDynamic(nullable, e, true);
             }
@@ -233,8 +206,8 @@ class RubyRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         });
     }
     marshalsImplicitlyToDynamic(t) {
-        return (0, TypeUtils_1.matchType)(t, _anyType => true, _nullType => true, _boolType => true, _integerType => true, _doubleType => true, _stringType => true, arrayType => this.marshalsImplicitlyToDynamic(arrayType.items), _classType => false, mapType => this.marshalsImplicitlyToDynamic(mapType.values), _enumType => true, unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+        return matchType(t, _anyType => true, _nullType => true, _boolType => true, _integerType => true, _doubleType => true, _stringType => true, arrayType => this.marshalsImplicitlyToDynamic(arrayType.items), _classType => false, mapType => this.marshalsImplicitlyToDynamic(mapType.values), _enumType => true, unionType => {
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null) {
                 return this.marshalsImplicitlyToDynamic(nullable);
             }
@@ -245,10 +218,10 @@ class RubyRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     // marshal implicitly. They are allowed to do this because they will
     // be checked in Dry::Struct.new
     propertyTypeMarshalsImplicitlyFromDynamic(t) {
-        return (0, TypeUtils_1.matchType)(t, _anyType => true, _nullType => true, _boolType => true, _integerType => true, _doubleType => true, _stringType => true, arrayType => this.propertyTypeMarshalsImplicitlyFromDynamic(arrayType.items), _classType => false, 
+        return matchType(t, _anyType => true, _nullType => true, _boolType => true, _integerType => true, _doubleType => true, _stringType => true, arrayType => this.propertyTypeMarshalsImplicitlyFromDynamic(arrayType.items), _classType => false, 
         // Map properties must be checked because Dry:Types doesn't have a generic Map
         _mapType => false, _enumType => true, unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null) {
                 return this.propertyTypeMarshalsImplicitlyFromDynamic(nullable);
             }
@@ -388,7 +361,7 @@ class RubyRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 return;
             }
             this.ensureBlankLine();
-            const [maybeNull, nonNulls] = (0, TypeUtils_1.removeNullFromUnion)(u, false);
+            const [maybeNull, nonNulls] = removeNullFromUnion(u, false);
             this.emitBlock("def self.from_dynamic!(d)", () => {
                 const memberNames = Array.from(u.getChildren()).map(member => this.nameForUnionMember(u, member));
                 this.forEachUnionMember(u, u.getChildren(), "none", null, (name, t) => {
@@ -500,7 +473,7 @@ class RubyRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             this.emitLine("# To parse this JSON, add 'dry-struct' and 'dry-types' gems, then do:");
             this.emitLine("#");
             this.forEachTopLevel("none", (topLevel, name) => {
-                const variable = (0, Source_1.modifySource)(Strings_1.snakeCase, name);
+                const variable = modifySource(snakeCase, name);
                 this.emitLine("#   ", variable, " = ", name, ".from_json! ", this.jsonSample(topLevel));
                 this.emitLine("#   puts ", this.exampleUse(topLevel, variable));
                 this.emitLine("#");
@@ -525,7 +498,7 @@ class RubyRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             this.forEachNamedType("leading-and-interposing", (c, n) => this.emitClass(c, n), (e, n) => this.emitEnum(e, n), (u, n) => this.emitUnion(u, n));
             if (!this._options.justTypes) {
                 this.forEachTopLevel("leading-and-interposing", (topLevel, name) => {
-                    const self = (0, Source_1.modifySource)(Strings_1.snakeCase, name);
+                    const self = modifySource(snakeCase, name);
                     // The json gem defines to_json on maps and primitives, so we only need to supply
                     // it for arrays.
                     const needsToJsonDefined = "array" === topLevel.kind;
@@ -553,4 +526,3 @@ class RubyRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         });
     }
 }
-exports.RubyRenderer = RubyRenderer;

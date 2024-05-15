@@ -1,53 +1,50 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.JacksonRenderer = exports.JavaRenderer = exports.javaNameStyle = exports.stringEscape = exports.JavaTargetLanguage = exports.javaOptions = void 0;
-const Annotation_1 = require("../Annotation");
-const ConvenienceRenderer_1 = require("../ConvenienceRenderer");
-const Naming_1 = require("../Naming");
-const RendererOptions_1 = require("../RendererOptions");
-const Source_1 = require("../Source");
-const Acronyms_1 = require("../support/Acronyms");
-const Strings_1 = require("../support/Strings");
-const Support_1 = require("../support/Support");
-const TargetLanguage_1 = require("../TargetLanguage");
-const Type_1 = require("../Type");
-const TypeUtils_1 = require("../TypeUtils");
-exports.javaOptions = {
-    useList: new RendererOptions_1.EnumOption("array-type", "Use T[] or List<T>", [
+import { anyTypeIssueAnnotation, nullTypeIssueAnnotation } from "../Annotation";
+import { ConvenienceRenderer } from "../ConvenienceRenderer";
+import { DependencyName, funPrefixNamer } from "../Naming";
+import { BooleanOption, EnumOption, StringOption, getOptionValues } from "../RendererOptions";
+import { maybeAnnotated } from "../Source";
+import { AcronymStyleOptions, acronymOption, acronymStyle } from "../support/Acronyms";
+import { allLowerWordStyle, allUpperWordStyle, capitalize, combineWords, escapeNonPrintableMapper, firstUpperWordStyle, isAscii, isDigit, isLetter, splitIntoWords, standardUnicodeHexEscape, utf16ConcatMap, utf16LegalizeCharacters } from "../support/Strings";
+import { assert, assertNever, defined, panic } from "../support/Support";
+import { TargetLanguage } from "../TargetLanguage";
+import { ArrayType, ClassType, EnumType, MapType, UnionType } from "../Type";
+import { directlyReachableSingleNamedType, matchType, nullableFromUnion, removeNullFromUnion } from "../TypeUtils";
+export const javaOptions = {
+    useList: new EnumOption("array-type", "Use T[] or List<T>", [
         ["array", false],
         ["list", true]
     ], "array"),
-    justTypes: new RendererOptions_1.BooleanOption("just-types", "Plain types only", false),
-    dateTimeProvider: new RendererOptions_1.EnumOption("datetime-provider", "Date time provider type", [
+    justTypes: new BooleanOption("just-types", "Plain types only", false),
+    dateTimeProvider: new EnumOption("datetime-provider", "Date time provider type", [
         ["java8", "java8"],
         ["legacy", "legacy"]
     ], "java8"),
-    acronymStyle: (0, Acronyms_1.acronymOption)(Acronyms_1.AcronymStyleOptions.Pascal),
+    acronymStyle: acronymOption(AcronymStyleOptions.Pascal),
     // FIXME: Do this via a configurable named eventually.
-    packageName: new RendererOptions_1.StringOption("package", "Generated package name", "NAME", "io.quicktype"),
-    lombok: new RendererOptions_1.BooleanOption("lombok", "Use lombok", false, "primary"),
-    lombokCopyAnnotations: new RendererOptions_1.BooleanOption("lombok-copy-annotations", "Copy accessor annotations", true, "secondary")
+    packageName: new StringOption("package", "Generated package name", "NAME", "io.quicktype"),
+    lombok: new BooleanOption("lombok", "Use lombok", false, "primary"),
+    lombokCopyAnnotations: new BooleanOption("lombok-copy-annotations", "Copy accessor annotations", true, "secondary")
 };
-class JavaTargetLanguage extends TargetLanguage_1.TargetLanguage {
+export class JavaTargetLanguage extends TargetLanguage {
     constructor() {
         super("Java", ["java"], "java");
     }
     getOptions() {
         return [
-            exports.javaOptions.useList,
-            exports.javaOptions.justTypes,
-            exports.javaOptions.dateTimeProvider,
-            exports.javaOptions.acronymStyle,
-            exports.javaOptions.packageName,
-            exports.javaOptions.lombok,
-            exports.javaOptions.lombokCopyAnnotations
+            javaOptions.useList,
+            javaOptions.justTypes,
+            javaOptions.dateTimeProvider,
+            javaOptions.acronymStyle,
+            javaOptions.packageName,
+            javaOptions.lombok,
+            javaOptions.lombokCopyAnnotations
         ];
     }
     get supportsUnionsWithBothNumberTypes() {
         return true;
     }
     makeRenderer(renderContext, untypedOptionValues) {
-        const options = (0, RendererOptions_1.getOptionValues)(exports.javaOptions, untypedOptionValues);
+        const options = getOptionValues(javaOptions, untypedOptionValues);
         if (options.justTypes) {
             return new JavaRenderer(this, renderContext, options);
         }
@@ -62,7 +59,6 @@ class JavaTargetLanguage extends TargetLanguage_1.TargetLanguage {
         return mapping;
     }
 }
-exports.JavaTargetLanguage = JavaTargetLanguage;
 const javaKeywords = [
     "_",
     "Object",
@@ -132,21 +128,20 @@ const javaKeywords = [
     "false",
     "true"
 ];
-exports.stringEscape = (0, Strings_1.utf16ConcatMap)((0, Strings_1.escapeNonPrintableMapper)(Strings_1.isAscii, Strings_1.standardUnicodeHexEscape));
+export const stringEscape = utf16ConcatMap(escapeNonPrintableMapper(isAscii, standardUnicodeHexEscape));
 function isStartCharacter(codePoint) {
     if (codePoint === 0x5f)
         return true; // underscore
-    return (0, Strings_1.isAscii)(codePoint) && (0, Strings_1.isLetter)(codePoint);
+    return isAscii(codePoint) && isLetter(codePoint);
 }
 function isPartCharacter(codePoint) {
-    return isStartCharacter(codePoint) || ((0, Strings_1.isAscii)(codePoint) && (0, Strings_1.isDigit)(codePoint));
+    return isStartCharacter(codePoint) || (isAscii(codePoint) && isDigit(codePoint));
 }
-const legalizeName = (0, Strings_1.utf16LegalizeCharacters)(isPartCharacter);
-function javaNameStyle(startWithUpper, upperUnderscore, original, acronymsStyle = Strings_1.allUpperWordStyle) {
-    const words = (0, Strings_1.splitIntoWords)(original);
-    return (0, Strings_1.combineWords)(words, legalizeName, upperUnderscore ? Strings_1.allUpperWordStyle : startWithUpper ? Strings_1.firstUpperWordStyle : Strings_1.allLowerWordStyle, upperUnderscore ? Strings_1.allUpperWordStyle : Strings_1.firstUpperWordStyle, upperUnderscore || startWithUpper ? Strings_1.allUpperWordStyle : Strings_1.allLowerWordStyle, acronymsStyle, upperUnderscore ? "_" : "", isStartCharacter);
+const legalizeName = utf16LegalizeCharacters(isPartCharacter);
+export function javaNameStyle(startWithUpper, upperUnderscore, original, acronymsStyle = allUpperWordStyle) {
+    const words = splitIntoWords(original);
+    return combineWords(words, legalizeName, upperUnderscore ? allUpperWordStyle : startWithUpper ? firstUpperWordStyle : allLowerWordStyle, upperUnderscore ? allUpperWordStyle : firstUpperWordStyle, upperUnderscore || startWithUpper ? allUpperWordStyle : allLowerWordStyle, acronymsStyle, upperUnderscore ? "_" : "", isStartCharacter);
 }
-exports.javaNameStyle = javaNameStyle;
 class JavaDateTimeProvider {
     constructor(_renderer, _className) {
         this._renderer = _renderer;
@@ -320,7 +315,7 @@ class JavaLegacyDateTimeProvider extends JavaDateTimeProvider {
         return [this._className, ".serializeDate(", variable, ")"];
     }
 }
-class JavaRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
+export class JavaRenderer extends ConvenienceRenderer {
     constructor(targetLanguage, renderContext, _options) {
         super(targetLanguage, renderContext);
         this._options = _options;
@@ -363,17 +358,17 @@ class JavaRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return this.getNameStyling("enumCaseNamingFunction");
     }
     unionNeedsName(u) {
-        return (0, TypeUtils_1.nullableFromUnion)(u) === null;
+        return nullableFromUnion(u) === null;
     }
     namedTypeToNameForTopLevel(type) {
         // If the top-level type doesn't contain any classes or unions
         // we have to define a class just for the `FromJson` method, in
         // emitFromJsonForTopLevel.
-        return (0, TypeUtils_1.directlyReachableSingleNamedType)(type);
+        return directlyReachableSingleNamedType(type);
     }
     makeNamesForPropertyGetterAndSetter(_c, _className, _p, _jsonName, name) {
-        const getterName = new Naming_1.DependencyName(this.getNameStyling("propertyNamingFunction"), name.order, lookup => `get_${lookup(name)}`);
-        const setterName = new Naming_1.DependencyName(this.getNameStyling("propertyNamingFunction"), name.order, lookup => `set_${lookup(name)}`);
+        const getterName = new DependencyName(this.getNameStyling("propertyNamingFunction"), name.order, lookup => `get_${lookup(name)}`);
+        const setterName = new DependencyName(this.getNameStyling("propertyNamingFunction"), name.order, lookup => `set_${lookup(name)}`);
         return [getterName, setterName];
     }
     makePropertyDependencyNames(c, className, p, jsonName, name) {
@@ -383,9 +378,9 @@ class JavaRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     }
     getNameStyling(convention) {
         const styling = {
-            typeNamingFunction: (0, Naming_1.funPrefixNamer)("types", n => javaNameStyle(true, false, n, (0, Acronyms_1.acronymStyle)(this._options.acronymStyle))),
-            propertyNamingFunction: (0, Naming_1.funPrefixNamer)("properties", n => javaNameStyle(false, false, n, (0, Acronyms_1.acronymStyle)(this._options.acronymStyle))),
-            enumCaseNamingFunction: (0, Naming_1.funPrefixNamer)("enum-cases", n => javaNameStyle(true, true, n, (0, Acronyms_1.acronymStyle)(this._options.acronymStyle)))
+            typeNamingFunction: funPrefixNamer("types", n => javaNameStyle(true, false, n, acronymStyle(this._options.acronymStyle))),
+            propertyNamingFunction: funPrefixNamer("properties", n => javaNameStyle(false, false, n, acronymStyle(this._options.acronymStyle))),
+            enumCaseNamingFunction: funPrefixNamer("enum-cases", n => javaNameStyle(true, true, n, acronymStyle(this._options.acronymStyle)))
         };
         return styling[convention];
     }
@@ -393,7 +388,7 @@ class JavaRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         if (this.topLevels.size === 1) {
             return methodName;
         }
-        return [topLevelName, (0, Strings_1.capitalize)(methodName)];
+        return [topLevelName, capitalize(methodName)];
     }
     methodName(prefix, suffix, topLevelName) {
         if (this.topLevels.size === 1) {
@@ -414,7 +409,7 @@ class JavaRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return this.methodName("get", "ObjectWriter", topLevelName);
     }
     startFile(basename) {
-        (0, Support_1.assert)(this._currentFilename === undefined, "Previous file wasn't finished");
+        assert(this._currentFilename === undefined, "Previous file wasn't finished");
         // FIXME: The filenames should actually be Sourcelikes, too
         this._currentFilename = `${this.sourcelikeToString(basename)}.java`;
         // FIXME: Why is this necessary?
@@ -426,7 +421,7 @@ class JavaRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         }
     }
     finishFile() {
-        super.finishFile((0, Support_1.defined)(this._currentFilename));
+        super.finishFile(defined(this._currentFilename));
         this._currentFilename = undefined;
     }
     emitPackageAndImports(imports) {
@@ -460,7 +455,7 @@ class JavaRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         this.emitTryCatch(f, () => this.emitLine("// Ignored"));
     }
     javaType(reference, t, withIssues = false) {
-        return (0, TypeUtils_1.matchType)(t, _anyType => (0, Source_1.maybeAnnotated)(withIssues, Annotation_1.anyTypeIssueAnnotation, "Object"), _nullType => (0, Source_1.maybeAnnotated)(withIssues, Annotation_1.nullTypeIssueAnnotation, "Object"), _boolType => (reference ? "Boolean" : "boolean"), _integerType => (reference ? "Long" : "long"), _doubleType => (reference ? "Double" : "double"), _stringType => "String", arrayType => {
+        return matchType(t, _anyType => maybeAnnotated(withIssues, anyTypeIssueAnnotation, "Object"), _nullType => maybeAnnotated(withIssues, nullTypeIssueAnnotation, "Object"), _boolType => (reference ? "Boolean" : "boolean"), _integerType => (reference ? "Long" : "long"), _doubleType => (reference ? "Double" : "double"), _stringType => "String", arrayType => {
             if (this._options.useList) {
                 return ["List<", this.javaType(true, arrayType.items, withIssues), ">"];
             }
@@ -468,7 +463,7 @@ class JavaRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 return [this.javaType(false, arrayType.items, withIssues), "[]"];
             }
         }, classType => this.nameForNamedType(classType), mapType => ["Map<String, ", this.javaType(true, mapType.values, withIssues), ">"], enumType => this.nameForNamedType(enumType), unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null)
                 return this.javaType(true, nullable, withIssues);
             return this.nameForNamedType(unionType);
@@ -489,7 +484,7 @@ class JavaRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         });
     }
     javaImport(t) {
-        return (0, TypeUtils_1.matchType)(t, _anyType => [], _nullType => [], _boolType => [], _integerType => [], _doubleType => [], _stringType => [], arrayType => {
+        return matchType(t, _anyType => [], _nullType => [], _boolType => [], _integerType => [], _doubleType => [], _stringType => [], arrayType => {
             if (this._options.useList) {
                 return [...this.javaImport(arrayType.items), "java.util.List"];
             }
@@ -517,7 +512,7 @@ class JavaRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         });
     }
     javaTypeWithoutGenerics(reference, t) {
-        if (t instanceof Type_1.ArrayType) {
+        if (t instanceof ArrayType) {
             if (this._options.useList) {
                 return ["List"];
             }
@@ -525,11 +520,11 @@ class JavaRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 return [this.javaTypeWithoutGenerics(false, t.items), "[]"];
             }
         }
-        else if (t instanceof Type_1.MapType) {
+        else if (t instanceof MapType) {
             return "Map";
         }
-        else if (t instanceof Type_1.UnionType) {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(t);
+        else if (t instanceof UnionType) {
+            const nullable = nullableFromUnion(t);
             if (nullable !== null)
                 return this.javaTypeWithoutGenerics(true, nullable);
             return this.nameForNamedType(t);
@@ -547,16 +542,16 @@ class JavaRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return [];
     }
     importsForType(t) {
-        if (t instanceof Type_1.ClassType) {
+        if (t instanceof ClassType) {
             return [];
         }
-        if (t instanceof Type_1.UnionType) {
+        if (t instanceof UnionType) {
             return ["java.io.IOException"];
         }
-        if (t instanceof Type_1.EnumType) {
+        if (t instanceof EnumType) {
             return ["java.io.IOException"];
         }
-        return (0, Support_1.assertNever)(t);
+        return assertNever(t);
     }
     importsForClass(c) {
         const imports = [];
@@ -568,7 +563,7 @@ class JavaRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     }
     importsForUnionMembers(u) {
         const imports = [];
-        const [, nonNulls] = (0, TypeUtils_1.removeNullFromUnion)(u);
+        const [, nonNulls] = removeNullFromUnion(u);
         this.forEachUnionMember(u, nonNulls, "none", null, (_fieldName, t) => {
             this.javaImport(t).forEach(imp => imports.push(imp));
         });
@@ -597,7 +592,7 @@ class JavaRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             if (!this._options.lombok) {
                 this.forEachClassProperty(c, "leading-and-interposing", (name, jsonName, p) => {
                     this.emitDescription(this.descriptionForClassProperty(c, jsonName));
-                    const [getterName, setterName] = (0, Support_1.defined)(this._gettersAndSettersForPropertyName.get(name));
+                    const [getterName, setterName] = defined(this._gettersAndSettersForPropertyName.get(name));
                     const rendered = this.javaType(false, p.type);
                     this.annotationsForAccessor(c, className, name, jsonName, p, false).forEach(annotation => this.emitLine(annotation));
                     this.emitLine("public ", rendered, " ", getterName, "() { return ", name, "; }");
@@ -624,7 +619,7 @@ class JavaRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         const imports = [...this.importsForType(u), ...this.importsForUnionMembers(u)];
         this.emitFileHeader(unionName, imports);
         this.emitDescription(this.descriptionForType(u));
-        const [, nonNulls] = (0, TypeUtils_1.removeNullFromUnion)(u);
+        const [, nonNulls] = removeNullFromUnion(u);
         this.emitUnionAttributes(u, unionName);
         this.emitBlock(["public class ", unionName], () => {
             for (const t of nonNulls) {
@@ -659,7 +654,7 @@ class JavaRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 this.emitLine("switch (this) {");
                 this.indent(() => {
                     this.forEachEnumCase(e, "none", (name, jsonName) => {
-                        this.emitLine("case ", name, ': return "', (0, exports.stringEscape)(jsonName), '";');
+                        this.emitLine("case ", name, ': return "', stringEscape(jsonName), '";');
                     });
                 });
                 this.emitLine("}");
@@ -669,7 +664,7 @@ class JavaRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             this.emitEnumDeserializationAttributes(e);
             this.emitBlock(["public static ", enumName, " forValue(String value) throws IOException"], () => {
                 this.forEachEnumCase(e, "none", (name, jsonName) => {
-                    this.emitLine('if (value.equals("', (0, exports.stringEscape)(jsonName), '")) return ', name, ";");
+                    this.emitLine('if (value.equals("', stringEscape(jsonName), '")) return ', name, ";");
                 });
                 this.emitLine('throw new IOException("Cannot deserialize ', enumName, '");');
             });
@@ -680,8 +675,7 @@ class JavaRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         this.forEachNamedType("leading-and-interposing", (c, n) => this.emitClassDefinition(c, n), (e, n) => this.emitEnumDefinition(e, n), (u, n) => this.emitUnionDefinition(u, n));
     }
 }
-exports.JavaRenderer = JavaRenderer;
-class JacksonRenderer extends JavaRenderer {
+export class JacksonRenderer extends JavaRenderer {
     constructor(targetLanguage, renderContext, options) {
         super(targetLanguage, renderContext, options);
         this._converterKeywords = [
@@ -703,7 +697,7 @@ class JacksonRenderer extends JavaRenderer {
     }
     annotationsForAccessor(_c, _className, _propertyName, jsonName, p, _isSetter) {
         const superAnnotations = super.annotationsForAccessor(_c, _className, _propertyName, jsonName, p, _isSetter);
-        const annotations = ['@JsonProperty("' + (0, exports.stringEscape)(jsonName) + '")'];
+        const annotations = ['@JsonProperty("' + stringEscape(jsonName) + '")'];
         switch (p.type.kind) {
             case "date-time":
                 this._dateTimeProvider.dateTimeJacksonAnnotations.forEach(annotation => annotations.push(annotation));
@@ -720,12 +714,12 @@ class JacksonRenderer extends JavaRenderer {
         return [...superAnnotations, ...annotations];
     }
     importsForType(t) {
-        if (t instanceof Type_1.ClassType) {
+        if (t instanceof ClassType) {
             const imports = super.importsForType(t);
             imports.push("com.fasterxml.jackson.annotation.*");
             return imports;
         }
-        if (t instanceof Type_1.UnionType) {
+        if (t instanceof UnionType) {
             const imports = super.importsForType(t);
             imports.push("java.io.IOException", "com.fasterxml.jackson.core.*", "com.fasterxml.jackson.databind.*", "com.fasterxml.jackson.databind.annotation.*");
             if (this._options.useList) {
@@ -733,12 +727,12 @@ class JacksonRenderer extends JavaRenderer {
             }
             return imports;
         }
-        if (t instanceof Type_1.EnumType) {
+        if (t instanceof EnumType) {
             const imports = super.importsForType(t);
             imports.push("com.fasterxml.jackson.annotation.*");
             return imports;
         }
-        return (0, Support_1.assertNever)(t);
+        return assertNever(t);
     }
     emitUnionAttributes(_u, unionName) {
         this.emitLine("@JsonDeserialize(using = ", unionName, ".Deserializer.class)");
@@ -770,13 +764,13 @@ class JacksonRenderer extends JavaRenderer {
                     this.emitLine("value.", fieldName, " = UUID.fromString(", parseFrom, ");");
                     break;
                 default:
-                    return (0, Support_1.panic)("Requested type isnt an object!");
+                    return panic("Requested type isnt an object!");
             }
         };
         const emitDeserializeType = (t, variableFieldName = "") => {
             const { fieldName } = this.unionField(u, t);
             const rendered = this.javaTypeWithoutGenerics(true, t);
-            if (this._options.useList && t instanceof Type_1.ArrayType) {
+            if (this._options.useList && t instanceof ArrayType) {
                 this.emitLine("value.", fieldName, " = jsonParser.readValueAs(new TypeReference<", rendered, ">() {});");
             }
             else if (stringBasedObjects.some(stringBasedTypeKind => t.kind === stringBasedTypeKind)) {
@@ -872,7 +866,7 @@ class JacksonRenderer extends JavaRenderer {
                 case "date-time":
                     return this._dateTimeProvider.convertDateTimeToString(fieldName);
                 default:
-                    return (0, Support_1.panic)("Requested type doesn't have custom serializer code!");
+                    return panic("Requested type doesn't have custom serializer code!");
             }
         };
         const emitSerializeType = (t) => {
@@ -887,7 +881,7 @@ class JacksonRenderer extends JavaRenderer {
                 this.emitLine("return;");
             });
         };
-        const [maybeNull, nonNulls] = (0, TypeUtils_1.removeNullFromUnion)(u);
+        const [maybeNull, nonNulls] = removeNullFromUnion(u);
         this.ensureBlankLine();
         this.emitBlock(["static class Deserializer extends JsonDeserializer<", unionName, ">"], () => {
             this.emitLine("@Override");
@@ -1082,4 +1076,3 @@ class JacksonRenderer extends JavaRenderer {
         super.emitSourceStructure();
     }
 }
-exports.JacksonRenderer = JacksonRenderer;

@@ -1,64 +1,54 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.removeIndirectionIntersections = exports.optionalToNullable = exports.noneToAny = exports.TypeGraph = exports.TypeAttributeStoreView = exports.TypeAttributeStore = exports.typeAndAttributesForTypeRef = exports.attributesForTypeRef = exports.derefTypeRef = exports.assertTypeRefGraph = exports.typeRefIndex = exports.makeTypeRef = exports.isTypeRef = void 0;
-const collection_utils_1 = require("collection-utils");
-const TypeAttributes_1 = require("./attributes/TypeAttributes");
-const TypeNames_1 = require("./attributes/TypeNames");
-const Graph_1 = require("./Graph");
+import { iterableFirst, mapMap, mapSome, setFilter, setMap, setSubtract, setUnionManyInto } from "collection-utils";
+import { emptyTypeAttributes } from "./attributes/TypeAttributes";
+import { TypeNames, namesTypeAttributeKind } from "./attributes/TypeNames";
+import { Graph } from "./Graph";
 // eslint-disable-next-line import/no-cycle
-const GraphRewriting_1 = require("./GraphRewriting");
-const Messages_1 = require("./Messages");
-const Support_1 = require("./support/Support");
+import { GraphRemapBuilder, GraphRewriteBuilder } from "./GraphRewriting";
+import { messageError } from "./Messages";
+import { assert, defined, mustNotHappen, panic } from "./support/Support";
 // eslint-disable-next-line import/no-cycle
-const Type_1 = require("./Type");
+import { ClassType, IntersectionType, UnionType } from "./Type";
 // eslint-disable-next-line import/no-cycle
-const TypeBuilder_1 = require("./TypeBuilder");
-const TypeUtils_1 = require("./TypeUtils");
+import { getNoStringTypeMapping, provenanceTypeAttributeKind } from "./TypeBuilder";
+import { combineTypeAttributesOfTypes, isNamedType, separateNamedTypes } from "./TypeUtils";
 const indexBits = 26;
 const indexMask = (1 << indexBits) - 1;
 const serialBits = 31 - indexBits;
 const serialMask = (1 << serialBits) - 1;
-function isTypeRef(x) {
+export function isTypeRef(x) {
     return typeof x === "number";
 }
-exports.isTypeRef = isTypeRef;
-function makeTypeRef(graph, index) {
-    (0, Support_1.assert)(index <= indexMask, "Too many types in graph");
+export function makeTypeRef(graph, index) {
+    assert(index <= indexMask, "Too many types in graph");
     return ((graph.serial & serialMask) << indexBits) | index;
 }
-exports.makeTypeRef = makeTypeRef;
-function typeRefIndex(tref) {
+export function typeRefIndex(tref) {
     return tref & indexMask;
 }
-exports.typeRefIndex = typeRefIndex;
-function assertTypeRefGraph(tref, graph) {
-    (0, Support_1.assert)(((tref >> indexBits) & serialMask) === (graph.serial & serialMask), "Mixing the wrong type reference and graph");
+export function assertTypeRefGraph(tref, graph) {
+    assert(((tref >> indexBits) & serialMask) === (graph.serial & serialMask), "Mixing the wrong type reference and graph");
 }
-exports.assertTypeRefGraph = assertTypeRefGraph;
 function getGraph(graphOrBuilder) {
     if (graphOrBuilder instanceof TypeGraph)
         return graphOrBuilder;
     return graphOrBuilder.originalGraph;
 }
-function derefTypeRef(tref, graphOrBuilder) {
+export function derefTypeRef(tref, graphOrBuilder) {
     const graph = getGraph(graphOrBuilder);
     assertTypeRefGraph(tref, graph);
     return graph.typeAtIndex(typeRefIndex(tref));
 }
-exports.derefTypeRef = derefTypeRef;
-function attributesForTypeRef(tref, graphOrBuilder) {
+export function attributesForTypeRef(tref, graphOrBuilder) {
     const graph = getGraph(graphOrBuilder);
     assertTypeRefGraph(tref, graph);
     return graph.atIndex(typeRefIndex(tref))[1];
 }
-exports.attributesForTypeRef = attributesForTypeRef;
-function typeAndAttributesForTypeRef(tref, graphOrBuilder) {
+export function typeAndAttributesForTypeRef(tref, graphOrBuilder) {
     const graph = getGraph(graphOrBuilder);
     assertTypeRefGraph(tref, graph);
     return graph.atIndex(typeRefIndex(tref));
 }
-exports.typeAndAttributesForTypeRef = typeAndAttributesForTypeRef;
-class TypeAttributeStore {
+export class TypeAttributeStore {
     constructor(_typeGraph, _values) {
         this._typeGraph = _typeGraph;
         this._values = _values;
@@ -75,14 +65,14 @@ class TypeAttributeStore {
         if (maybeAttributes !== undefined) {
             return maybeAttributes;
         }
-        return TypeAttributes_1.emptyTypeAttributes;
+        return emptyTypeAttributes;
     }
     attributesForTopLevel(name) {
         const maybeAttributes = this._topLevelValues.get(name);
         if (maybeAttributes !== undefined) {
             return maybeAttributes;
         }
-        return TypeAttributes_1.emptyTypeAttributes;
+        return emptyTypeAttributes;
     }
     setInMap(attributes, kind, value) {
         // FIXME: This is potentially super slow
@@ -108,8 +98,7 @@ class TypeAttributeStore {
         return this.tryGetInMap(this.attributesForTopLevel(topLevelName), kind);
     }
 }
-exports.TypeAttributeStore = TypeAttributeStore;
-class TypeAttributeStoreView {
+export class TypeAttributeStoreView {
     constructor(_attributeStore, _definition) {
         this._attributeStore = _attributeStore;
         this._definition = _definition;
@@ -124,17 +113,16 @@ class TypeAttributeStoreView {
         return this._attributeStore.tryGet(this._definition, t);
     }
     get(t) {
-        return (0, Support_1.defined)(this.tryGet(t));
+        return defined(this.tryGet(t));
     }
     tryGetForTopLevel(name) {
         return this._attributeStore.tryGetForTopLevel(this._definition, name);
     }
     getForTopLevel(name) {
-        return (0, Support_1.defined)(this.tryGetForTopLevel(name));
+        return defined(this.tryGetForTopLevel(name));
     }
 }
-exports.TypeAttributeStoreView = TypeAttributeStoreView;
-class TypeGraph {
+export class TypeGraph {
     constructor(typeBuilder, serial, _haveProvenanceAttributes) {
         this.serial = serial;
         this._haveProvenanceAttributes = _haveProvenanceAttributes;
@@ -150,10 +138,10 @@ class TypeGraph {
         return this._typeBuilder === undefined;
     }
     get attributeStore() {
-        return (0, Support_1.defined)(this._attributeStore);
+        return defined(this._attributeStore);
     }
     freeze(topLevels, types, typeAttributes) {
-        (0, Support_1.assert)(!this.isFrozen, "Tried to freeze TypeGraph a second time");
+        assert(!this.isFrozen, "Tried to freeze TypeGraph a second time");
         for (const t of types) {
             assertTypeRefGraph(t.typeRef, this);
         }
@@ -164,24 +152,24 @@ class TypeGraph {
         // either a _typeBuilder or a _types.
         this._types = types;
         this._typeBuilder = undefined;
-        this._topLevels = (0, collection_utils_1.mapMap)(topLevels, tref => derefTypeRef(tref, this));
+        this._topLevels = mapMap(topLevels, tref => derefTypeRef(tref, this));
     }
     get topLevels() {
-        (0, Support_1.assert)(this.isFrozen, "Cannot get top-levels from a non-frozen graph");
+        assert(this.isFrozen, "Cannot get top-levels from a non-frozen graph");
         return this._topLevels;
     }
     typeAtIndex(index) {
         if (this._typeBuilder !== undefined) {
             return this._typeBuilder.typeAtIndex(index);
         }
-        return (0, Support_1.defined)(this._types)[index];
+        return defined(this._types)[index];
     }
     atIndex(index) {
         if (this._typeBuilder !== undefined) {
             return this._typeBuilder.atIndex(index);
         }
         const t = this.typeAtIndex(index);
-        return [t, (0, Support_1.defined)(this._attributeStore).attributesForType(t)];
+        return [t, defined(this._attributeStore).attributesForType(t)];
     }
     filterTypes(predicate) {
         const seen = new Set();
@@ -204,15 +192,15 @@ class TypeGraph {
         return new Set(types);
     }
     allNamedTypes() {
-        return this.filterTypes(TypeUtils_1.isNamedType);
+        return this.filterTypes(isNamedType);
     }
     allNamedTypesSeparated() {
         const types = this.allNamedTypes();
-        return (0, TypeUtils_1.separateNamedTypes)(types);
+        return separateNamedTypes(types);
     }
     allProvenance() {
-        (0, Support_1.assert)(this._haveProvenanceAttributes);
-        const view = new TypeAttributeStoreView(this.attributeStore, TypeBuilder_1.provenanceTypeAttributeKind);
+        assert(this._haveProvenanceAttributes);
+        const view = new TypeAttributeStoreView(this.attributeStore, provenanceTypeAttributeKind);
         const sets = Array.from(this.allTypesUnordered()).map(t => {
             const maybeSet = view.tryGet(t);
             if (maybeSet !== undefined)
@@ -220,7 +208,7 @@ class TypeGraph {
             return new Set();
         });
         const result = new Set();
-        (0, collection_utils_1.setUnionManyInto)(result, sets);
+        setUnionManyInto(result, sets);
         return result;
     }
     setPrintOnRewrite() {
@@ -232,9 +220,9 @@ class TypeGraph {
         const oldProvenance = this.allProvenance();
         const newProvenance = newGraph.allProvenance();
         if (oldProvenance.size !== newProvenance.size) {
-            const difference = (0, collection_utils_1.setSubtract)(oldProvenance, newProvenance);
+            const difference = setSubtract(oldProvenance, newProvenance);
             const indexes = Array.from(difference);
-            return (0, Messages_1.messageError)("IRTypeAttributesNotPropagated", { count: difference.size, indexes });
+            return messageError("IRTypeAttributesNotPropagated", { count: difference.size, indexes });
         }
     }
     printRewrite(title) {
@@ -252,7 +240,7 @@ class TypeGraph {
         this.printRewrite(title);
         if (!force && replacementGroups.length === 0)
             return this;
-        const builder = new GraphRewriting_1.GraphRewriteBuilder(this, stringTypeMapping, alphabetizeProperties, this._haveProvenanceAttributes, replacementGroups, debugPrintReconstitution, replacer);
+        const builder = new GraphRewriteBuilder(this, stringTypeMapping, alphabetizeProperties, this._haveProvenanceAttributes, replacementGroups, debugPrintReconstitution, replacer);
         const newGraph = builder.finish();
         this.checkLostTypeAttributes(builder, newGraph);
         if (this._printOnRewrite) {
@@ -267,25 +255,25 @@ class TypeGraph {
         this.printRewrite(title);
         if (!force && map.size === 0)
             return this;
-        const builder = new GraphRewriting_1.GraphRemapBuilder(this, stringTypeMapping, alphabetizeProperties, this._haveProvenanceAttributes, map, debugPrintRemapping);
+        const builder = new GraphRemapBuilder(this, stringTypeMapping, alphabetizeProperties, this._haveProvenanceAttributes, map, debugPrintRemapping);
         const newGraph = builder.finish();
         this.checkLostTypeAttributes(builder, newGraph);
         if (this._printOnRewrite) {
             newGraph.setPrintOnRewrite();
             newGraph.printGraph();
         }
-        (0, Support_1.assert)(!builder.didAddForwardingIntersection);
+        assert(!builder.didAddForwardingIntersection);
         return newGraph;
     }
     garbageCollect(alphabetizeProperties, debugPrintReconstitution) {
-        const newGraph = this.remap("GC", (0, TypeBuilder_1.getNoStringTypeMapping)(), alphabetizeProperties, new Map(), debugPrintReconstitution, true);
+        const newGraph = this.remap("GC", getNoStringTypeMapping(), alphabetizeProperties, new Map(), debugPrintReconstitution, true);
         return newGraph;
     }
     rewriteFixedPoint(alphabetizeProperties, debugPrintReconstitution) {
         // eslint-disable-next-line @typescript-eslint/no-this-alias
         let graph = this;
         for (;;) {
-            const newGraph = this.rewrite("fixed-point", (0, TypeBuilder_1.getNoStringTypeMapping)(), alphabetizeProperties, [], debugPrintReconstitution, Support_1.mustNotHappen, true);
+            const newGraph = this.rewrite("fixed-point", getNoStringTypeMapping(), alphabetizeProperties, [], debugPrintReconstitution, mustNotHappen, true);
             if (graph.allTypesUnordered().size === newGraph.allTypesUnordered().size) {
                 return graph;
             }
@@ -293,16 +281,16 @@ class TypeGraph {
         }
     }
     allTypesUnordered() {
-        (0, Support_1.assert)(this.isFrozen, "Tried to get all graph types before it was frozen");
-        return new Set((0, Support_1.defined)(this._types));
+        assert(this.isFrozen, "Tried to get all graph types before it was frozen");
+        return new Set(defined(this._types));
     }
     makeGraph(invertDirection, childrenOfType) {
-        return new Graph_1.Graph((0, Support_1.defined)(this._types), invertDirection, childrenOfType);
+        return new Graph(defined(this._types), invertDirection, childrenOfType);
     }
     getParentsOfType(t) {
         assertTypeRefGraph(t.typeRef, this);
         if (this._parents === undefined) {
-            const parents = (0, Support_1.defined)(this._types).map(_ => new Set());
+            const parents = defined(this._types).map(_ => new Set());
             for (const p of this.allTypesUnordered()) {
                 for (const c of p.getChildren()) {
                     const index = c.index;
@@ -314,7 +302,7 @@ class TypeGraph {
         return this._parents[t.index];
     }
     printGraph() {
-        const types = (0, Support_1.defined)(this._types);
+        const types = defined(this._types);
         for (let i = 0; i < types.length; i++) {
             const t = types[i];
             const parts = [];
@@ -335,23 +323,21 @@ class TypeGraph {
         }
     }
 }
-exports.TypeGraph = TypeGraph;
-function noneToAny(graph, stringTypeMapping, debugPrintReconstitution) {
-    const noneTypes = (0, collection_utils_1.setFilter)(graph.allTypesUnordered(), t => t.kind === "none");
+export function noneToAny(graph, stringTypeMapping, debugPrintReconstitution) {
+    const noneTypes = setFilter(graph.allTypesUnordered(), t => t.kind === "none");
     if (noneTypes.size === 0) {
         return graph;
     }
-    (0, Support_1.assert)(noneTypes.size === 1, "Cannot have more than one none type");
+    assert(noneTypes.size === 1, "Cannot have more than one none type");
     return graph.rewrite("none to any", stringTypeMapping, false, [Array.from(noneTypes)], debugPrintReconstitution, (types, builder, forwardingRef) => {
-        const attributes = (0, TypeUtils_1.combineTypeAttributesOfTypes)("union", types);
+        const attributes = combineTypeAttributesOfTypes("union", types);
         const tref = builder.getPrimitiveType("any", attributes, forwardingRef);
         return tref;
     });
 }
-exports.noneToAny = noneToAny;
-function optionalToNullable(graph, stringTypeMapping, debugPrintReconstitution) {
+export function optionalToNullable(graph, stringTypeMapping, debugPrintReconstitution) {
     function rewriteClass(c, builder, forwardingRef) {
-        const properties = (0, collection_utils_1.mapMap)(c.getProperties(), (p, name) => {
+        const properties = mapMap(c.getProperties(), (p, name) => {
             const t = p.type;
             let ref;
             if (!p.isOptional || t.isNullable) {
@@ -360,13 +346,13 @@ function optionalToNullable(graph, stringTypeMapping, debugPrintReconstitution) 
             else {
                 const nullType = builder.getPrimitiveType("null");
                 let members;
-                if (t instanceof Type_1.UnionType) {
-                    members = (0, collection_utils_1.setMap)(t.members, m => builder.reconstituteType(m)).add(nullType);
+                if (t instanceof UnionType) {
+                    members = setMap(t.members, m => builder.reconstituteType(m)).add(nullType);
                 }
                 else {
                     members = new Set([builder.reconstituteType(t), nullType]);
                 }
-                const attributes = TypeNames_1.namesTypeAttributeKind.setDefaultInAttributes(t.getAttributes(), () => TypeNames_1.TypeNames.make(new Set([name]), new Set(), true));
+                const attributes = namesTypeAttributeKind.setDefaultInAttributes(t.getAttributes(), () => TypeNames.make(new Set([name]), new Set(), true));
                 ref = builder.getUnionType(attributes, members);
             }
             return builder.makeClassProperty(ref, p.isOptional);
@@ -378,34 +364,33 @@ function optionalToNullable(graph, stringTypeMapping, debugPrintReconstitution) 
             return builder.getClassType(c.getAttributes(), properties, forwardingRef);
         }
     }
-    const classesWithOptional = (0, collection_utils_1.setFilter)(graph.allTypesUnordered(), t => t instanceof Type_1.ClassType && (0, collection_utils_1.mapSome)(t.getProperties(), p => p.isOptional));
+    const classesWithOptional = setFilter(graph.allTypesUnordered(), t => t instanceof ClassType && mapSome(t.getProperties(), p => p.isOptional));
     const replacementGroups = Array.from(classesWithOptional).map(c => [c]);
     if (classesWithOptional.size === 0) {
         return graph;
     }
     return graph.rewrite("optional to nullable", stringTypeMapping, false, replacementGroups, debugPrintReconstitution, (setOfClass, builder, forwardingRef) => {
-        (0, Support_1.assert)(setOfClass.size === 1);
-        const c = (0, Support_1.defined)((0, collection_utils_1.iterableFirst)(setOfClass));
+        assert(setOfClass.size === 1);
+        const c = defined(iterableFirst(setOfClass));
         return rewriteClass(c, builder, forwardingRef);
     });
 }
-exports.optionalToNullable = optionalToNullable;
-function removeIndirectionIntersections(graph, stringTypeMapping, debugPrintRemapping) {
+export function removeIndirectionIntersections(graph, stringTypeMapping, debugPrintRemapping) {
     const map = [];
     for (const t of graph.allTypesUnordered()) {
-        if (!(t instanceof Type_1.IntersectionType))
+        if (!(t instanceof IntersectionType))
             continue;
         const seen = new Set([t]);
         let current = t;
         while (current.members.size === 1) {
-            const member = (0, Support_1.defined)((0, collection_utils_1.iterableFirst)(current.members));
-            if (!(member instanceof Type_1.IntersectionType)) {
+            const member = defined(iterableFirst(current.members));
+            if (!(member instanceof IntersectionType)) {
                 map.push([t, member]);
                 break;
             }
             if (seen.has(member)) {
                 // FIXME: Technically, this is an any type.
-                return (0, Support_1.panic)("There's a cycle of intersection types");
+                return panic("There's a cycle of intersection types");
             }
             seen.add(member);
             current = member;
@@ -413,4 +398,3 @@ function removeIndirectionIntersections(graph, stringTypeMapping, debugPrintRema
     }
     return graph.remap("remove indirection intersections", stringTypeMapping, false, new Map(map), debugPrintRemapping);
 }
-exports.removeIndirectionIntersections = removeIndirectionIntersections;

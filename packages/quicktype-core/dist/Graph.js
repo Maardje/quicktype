@@ -1,22 +1,19 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.Graph = void 0;
-const collection_utils_1 = require("collection-utils");
-const Support_1 = require("./support/Support");
+import { setMap } from "collection-utils";
+import { assert, defined, repeated, repeatedCall } from "./support/Support";
 function countComponentGraphNodes(components) {
     if (components.length === 0)
         return 0;
     let largest = -1;
     let count = 0;
     for (const c of components) {
-        (0, Support_1.assert)(c.length > 0, "Empty component not allowed");
+        assert(c.length > 0, "Empty component not allowed");
         for (const v of c) {
-            (0, Support_1.assert)(v >= 0, "Negative vertex index is invalid");
+            assert(v >= 0, "Negative vertex index is invalid");
             largest = Math.max(largest, v);
             count += 1;
         }
     }
-    (0, Support_1.assert)(largest + 1 === count, "Vertex indexes and count don't match up");
+    assert(largest + 1 === count, "Vertex indexes and count don't match up");
     return count;
 }
 // https://en.wikipedia.org/wiki/Tarjan%27s_strongly_connected_components_algorithm
@@ -24,9 +21,9 @@ function stronglyConnectedComponents(successors) {
     let index = 0;
     const stack = [];
     const numNodes = successors.length;
-    const indexes = (0, Support_1.repeated)(numNodes, -1);
-    const lowLinks = (0, Support_1.repeated)(numNodes, -1);
-    const onStack = (0, Support_1.repeated)(numNodes, false);
+    const indexes = repeated(numNodes, -1);
+    const lowLinks = repeated(numNodes, -1);
+    const onStack = repeated(numNodes, false);
     const sccs = [];
     function strongconnect(v) {
         // Set the depth index for v to the smallest unused index
@@ -55,7 +52,7 @@ function stronglyConnectedComponents(successors) {
             const scc = [];
             let w;
             do {
-                w = (0, Support_1.defined)(stack.pop());
+                w = defined(stack.pop());
                 onStack[w] = false;
                 scc.push(w);
             } while (w !== v);
@@ -67,17 +64,17 @@ function stronglyConnectedComponents(successors) {
             strongconnect(v);
         }
     }
-    (0, Support_1.assert)(countComponentGraphNodes(sccs) === numNodes, "We didn't put all the nodes into SCCs");
+    assert(countComponentGraphNodes(sccs) === numNodes, "We didn't put all the nodes into SCCs");
     return sccs;
 }
 function buildComponentOfNodeMap(successors, components) {
     const numComponents = components.length;
     const numNodes = successors.length;
-    (0, Support_1.assert)(numNodes === countComponentGraphNodes(components), "Components don't match up with graph");
-    const componentOfNode = (0, Support_1.repeated)(numNodes, -1);
+    assert(numNodes === countComponentGraphNodes(components), "Components don't match up with graph");
+    const componentOfNode = repeated(numNodes, -1);
     for (let c = 0; c < numComponents; c++) {
         for (const n of components[c]) {
-            (0, Support_1.assert)(componentOfNode[n] < 0, "We have a node that's in two components");
+            assert(componentOfNode[n] < 0, "We have a node that's in two components");
             componentOfNode[n] = c;
         }
     }
@@ -86,7 +83,7 @@ function buildComponentOfNodeMap(successors, components) {
 function buildMetaSuccessors(successors, components) {
     const numComponents = components.length;
     const componentOfNode = buildComponentOfNodeMap(successors, components);
-    const componentAdded = (0, Support_1.repeated)(numComponents, false);
+    const componentAdded = repeated(numComponents, false);
     const metaSuccessors = [];
     for (let c = 0; c < numComponents; c++) {
         const succ = [];
@@ -101,7 +98,7 @@ function buildMetaSuccessors(successors, components) {
         }
         // reset bookkeeping
         for (const ms of succ) {
-            (0, Support_1.assert)(componentAdded[ms]);
+            assert(componentAdded[ms]);
             componentAdded[ms] = false;
         }
         metaSuccessors.push(succ);
@@ -110,7 +107,7 @@ function buildMetaSuccessors(successors, components) {
 }
 function invertEdges(successors) {
     const numNodes = successors.length;
-    const predecessors = (0, Support_1.repeatedCall)(numNodes, () => []);
+    const predecessors = repeatedCall(numNodes, () => []);
     for (let s = 0; s < numNodes; s++) {
         for (const v of successors[s]) {
             predecessors[v].push(s);
@@ -120,7 +117,7 @@ function invertEdges(successors) {
 }
 function calculateInDegrees(successors) {
     const numNodes = successors.length;
-    const inDegrees = (0, Support_1.repeated)(numNodes, 0);
+    const inDegrees = repeated(numNodes, 0);
     for (const s of successors) {
         for (const v of s) {
             inDegrees[v] += 1;
@@ -139,7 +136,7 @@ function findRoots(successors) {
     }
     return roots;
 }
-class Graph {
+export class Graph {
     constructor(nodes, invertDirection, edges) {
         this._nodes = Array.from(nodes);
         this._indexByNode = new Map(this._nodes.map((n, i) => [n, i]));
@@ -148,7 +145,7 @@ class Graph {
             edgesArray = edges;
         }
         else {
-            edgesArray = this._nodes.map(n => Array.from(edges(n)).map(s => (0, Support_1.defined)(this._indexByNode.get(s))));
+            edgesArray = this._nodes.map(n => Array.from(edges(n)).map(s => defined(this._indexByNode.get(s))));
         }
         if (invertDirection) {
             edgesArray = invertEdges(edgesArray);
@@ -167,7 +164,7 @@ class Graph {
     }
     // The subgraph starting at `root` must be acyclic.
     dfsTraversal(root, preOrder, process) {
-        const visited = (0, Support_1.repeated)(this.size, false);
+        const visited = repeated(this.size, false);
         const visit = (v) => {
             if (visited[v])
                 return;
@@ -182,12 +179,12 @@ class Graph {
                 process(this._nodes[v]);
             }
         };
-        visit((0, Support_1.defined)(this._indexByNode.get(root)));
+        visit(defined(this._indexByNode.get(root)));
     }
     stronglyConnectedComponents() {
         const components = stronglyConnectedComponents(this._successors);
         const componentSuccessors = buildMetaSuccessors(this._successors, components);
-        return new Graph(components.map(ns => (0, collection_utils_1.setMap)(ns, n => this._nodes[n])), false, componentSuccessors);
+        return new Graph(components.map(ns => setMap(ns, n => this._nodes[n])), false, componentSuccessors);
     }
     makeDot(includeNode, nodeLabel) {
         const lines = [];
@@ -214,4 +211,3 @@ class Graph {
         return lines.join("\n");
     }
 }
-exports.Graph = Graph;

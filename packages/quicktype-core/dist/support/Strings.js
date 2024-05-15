@@ -1,14 +1,8 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.makeNameStyle = exports.addPrefixIfNecessary = exports.combineWords = exports.allLowerWordStyle = exports.originalWord = exports.allUpperWordStyle = exports.firstUpperWordStyle = exports.splitIntoWords = exports.fastIsUpperCase = exports.startWithLetter = exports.snakeCase = exports.camelCase = exports.pascalCase = exports.decapitalize = exports.capitalize = exports.trimEnd = exports.isWordCharacter = exports.isLetterOrUnderscoreOrDigit = exports.isLetterOrUnderscore = exports.isLetterOrDigit = exports.isNumeric = exports.isDigit = exports.isLetter = exports.isAscii = exports.isPrintable = exports.stringEscape = exports.utf16StringEscape = exports.escapeNonPrintableMapper = exports.standardUnicodeHexEscape = exports.intToHex = exports.repeatString = exports.legalizeCharacters = exports.utf16LegalizeCharacters = exports.utf32ConcatMap = exports.utf16ConcatMap = void 0;
-const unicode_properties_1 = __importDefault(require("unicode-properties"));
-const Messages_1 = require("../Messages");
+import unicode from "unicode-properties";
+import { messageAssert } from "../Messages";
 // eslint-disable-next-line import/no-cycle
-const Acronyms_1 = require("./Acronyms");
-const Support_1 = require("./Support");
+import { acronyms } from "./Acronyms";
+import { assert, assertNever, defined, panic } from "./Support";
 function computeAsciiMap(mapper) {
     const charStringMap = [];
     const charNoEscapeMap = [];
@@ -33,7 +27,7 @@ function precomputedCodePointPredicate(p) {
     };
 }
 // FIXME: This is a copy of code in src/Data/String/Util.js
-function utf16ConcatMap(mapper) {
+export function utf16ConcatMap(mapper) {
     const { charStringMap, charNoEscapeMap } = computeAsciiMap(mapper);
     // eslint-disable-next-line @typescript-eslint/naming-convention
     return function stringConcatMap_inner(s) {
@@ -63,14 +57,13 @@ function utf16ConcatMap(mapper) {
         return cs.join("");
     };
 }
-exports.utf16ConcatMap = utf16ConcatMap;
 function isHighSurrogate(cc) {
     return cc >= 0xd800 && cc <= 0xdbff;
 }
 function isLowSurrogate(cc) {
     return cc >= 0xdc00 && cc <= 0xdfff;
 }
-function utf32ConcatMap(mapper) {
+export function utf32ConcatMap(mapper) {
     const { charStringMap, charNoEscapeMap } = computeAsciiMap(mapper);
     // eslint-disable-next-line @typescript-eslint/naming-convention
     return function stringConcatMap_inner(s) {
@@ -87,7 +80,7 @@ function utf32ConcatMap(mapper) {
                     const highSurrogate = cc;
                     i++;
                     const lowSurrogate = s.charCodeAt(i);
-                    (0, Messages_1.messageAssert)(isLowSurrogate(lowSurrogate), "MiscUnicodeHighSurrogateWithoutLowSurrogate", {});
+                    messageAssert(isLowSurrogate(lowSurrogate), "MiscUnicodeHighSurrogateWithoutLowSurrogate", {});
                     const highBits = highSurrogate - 0xd800;
                     const lowBits = lowSurrogate - 0xdc00;
                     cc = 0x10000 + lowBits + (highBits << 10);
@@ -109,17 +102,14 @@ function utf32ConcatMap(mapper) {
         return cs.join("");
     };
 }
-exports.utf32ConcatMap = utf32ConcatMap;
-function utf16LegalizeCharacters(isLegal) {
+export function utf16LegalizeCharacters(isLegal) {
     return utf16ConcatMap(u => (isLegal(u) ? String.fromCharCode(u) : ""));
 }
-exports.utf16LegalizeCharacters = utf16LegalizeCharacters;
-function legalizeCharacters(isLegal) {
+export function legalizeCharacters(isLegal) {
     return utf32ConcatMap(u => (u <= 0xffff && isLegal(u) ? String.fromCharCode(u) : ""));
 }
-exports.legalizeCharacters = legalizeCharacters;
-function repeatString(s, n) {
-    (0, Support_1.assert)(n >= 0, "Cannot repeat a string a negative number of times");
+export function repeatString(s, n) {
+    assert(n >= 0, "Cannot repeat a string a negative number of times");
     if (n === 0)
         return "";
     // From https://github.com/lodash/lodash
@@ -137,15 +127,13 @@ function repeatString(s, n) {
     } while (n > 0);
     return result;
 }
-exports.repeatString = repeatString;
-function intToHex(i, width) {
+export function intToHex(i, width) {
     let str = i.toString(16);
     if (str.length >= width)
         return str;
     return repeatString("0", width - str.length) + str;
 }
-exports.intToHex = intToHex;
-function standardUnicodeHexEscape(codePoint) {
+export function standardUnicodeHexEscape(codePoint) {
     if (codePoint <= 0xffff) {
         return "\\u" + intToHex(codePoint, 4);
     }
@@ -153,8 +141,7 @@ function standardUnicodeHexEscape(codePoint) {
         return "\\U" + intToHex(codePoint, 8);
     }
 }
-exports.standardUnicodeHexEscape = standardUnicodeHexEscape;
-function escapeNonPrintableMapper(printablePredicate, escaper) {
+export function escapeNonPrintableMapper(printablePredicate, escaper) {
     function mapper(u) {
         switch (u) {
             case 0x5c:
@@ -174,13 +161,12 @@ function escapeNonPrintableMapper(printablePredicate, escaper) {
     }
     return mapper;
 }
-exports.escapeNonPrintableMapper = escapeNonPrintableMapper;
-exports.utf16StringEscape = utf16ConcatMap(escapeNonPrintableMapper(isPrintable, standardUnicodeHexEscape));
-exports.stringEscape = utf32ConcatMap(escapeNonPrintableMapper(isPrintable, standardUnicodeHexEscape));
-function isPrintable(codePoint) {
+export const utf16StringEscape = utf16ConcatMap(escapeNonPrintableMapper(isPrintable, standardUnicodeHexEscape));
+export const stringEscape = utf32ConcatMap(escapeNonPrintableMapper(isPrintable, standardUnicodeHexEscape));
+export function isPrintable(codePoint) {
     if (codePoint > 0xffff)
         return false;
-    const category = unicode_properties_1.default.getCategory(codePoint);
+    const category = unicode.getCategory(codePoint);
     return [
         "Mc",
         "No",
@@ -207,48 +193,39 @@ function isPrintable(codePoint) {
         "Lo"
     ].includes(category);
 }
-exports.isPrintable = isPrintable;
-function isAscii(codePoint) {
+export function isAscii(codePoint) {
     return codePoint < 128;
 }
-exports.isAscii = isAscii;
-function isLetter(codePoint) {
-    const category = unicode_properties_1.default.getCategory(codePoint);
+export function isLetter(codePoint) {
+    const category = unicode.getCategory(codePoint);
     // FIXME: Include Letter, modifier (Lm)?
     return ["Lu", "Ll", "Lt", "Lo"].includes(category);
 }
-exports.isLetter = isLetter;
-function isDigit(codePoint) {
-    const category = unicode_properties_1.default.getCategory(codePoint);
+export function isDigit(codePoint) {
+    const category = unicode.getCategory(codePoint);
     return ["Nd"].includes(category);
 }
-exports.isDigit = isDigit;
-function isNumeric(codePoint) {
-    const category = unicode_properties_1.default.getCategory(codePoint);
+export function isNumeric(codePoint) {
+    const category = unicode.getCategory(codePoint);
     return ["No", "Nd", "Nl"].includes(category);
 }
-exports.isNumeric = isNumeric;
-function isLetterOrDigit(codePoint) {
+export function isLetterOrDigit(codePoint) {
     return isLetter(codePoint) || isDigit(codePoint);
 }
-exports.isLetterOrDigit = isLetterOrDigit;
-function isLetterOrUnderscore(codePoint) {
+export function isLetterOrUnderscore(codePoint) {
     return isLetter(codePoint) || codePoint === 0x5f;
 }
-exports.isLetterOrUnderscore = isLetterOrUnderscore;
-function isLetterOrUnderscoreOrDigit(codePoint) {
+export function isLetterOrUnderscoreOrDigit(codePoint) {
     return isLetterOrUnderscore(codePoint) || isDigit(codePoint);
 }
-exports.isLetterOrUnderscoreOrDigit = isLetterOrUnderscoreOrDigit;
-function isWordCharacter(codePoint) {
+export function isWordCharacter(codePoint) {
     return isLetter(codePoint) || isDigit(codePoint);
 }
-exports.isWordCharacter = isWordCharacter;
-function trimEnd(str) {
+export function trimEnd(str) {
     const l = str.length;
     let firstWS = l;
     for (let i = l - 1; i >= 0; i--) {
-        if (!unicode_properties_1.default.isWhiteSpace(str.charCodeAt(i)))
+        if (!unicode.isWhiteSpace(str.charCodeAt(i)))
             break;
         firstWS = i;
     }
@@ -256,36 +233,30 @@ function trimEnd(str) {
         return str;
     return str.slice(0, firstWS);
 }
-exports.trimEnd = trimEnd;
 function modifyFirstChar(f, s) {
     if (s === "")
         return s;
     return f(s[0]) + s.slice(1);
 }
-function capitalize(str) {
+export function capitalize(str) {
     return modifyFirstChar(c => c.toUpperCase(), str);
 }
-exports.capitalize = capitalize;
-function decapitalize(str) {
+export function decapitalize(str) {
     return modifyFirstChar(c => c.toLowerCase(), str);
 }
-exports.decapitalize = decapitalize;
 const wordSeparatorRegex = /[-_. ]+/;
-function pascalCase(str) {
+export function pascalCase(str) {
     const words = str.split(wordSeparatorRegex).map(capitalize);
     return words.join("");
 }
-exports.pascalCase = pascalCase;
-function camelCase(str) {
+export function camelCase(str) {
     return decapitalize(pascalCase(str));
 }
-exports.camelCase = camelCase;
-function snakeCase(str) {
+export function snakeCase(str) {
     const words = splitIntoWords(str).map(({ word }) => word.toLowerCase());
     return words.join("_");
 }
-exports.snakeCase = snakeCase;
-function startWithLetter(isAllowedStart, // FIXME: technically, this operates on UTF16 units
+export function startWithLetter(isAllowedStart, // FIXME: technically, this operates on UTF16 units
 upper, str) {
     const modify = upper ? capitalize : decapitalize;
     if (str === "")
@@ -294,15 +265,14 @@ upper, str) {
         return modify(str);
     return modify("the" + str);
 }
-exports.startWithLetter = startWithLetter;
-const knownAcronyms = new Set(Acronyms_1.acronyms);
+const knownAcronyms = new Set(acronyms);
 const fastIsWordCharacter = precomputedCodePointPredicate(isWordCharacter);
 const fastIsNonWordCharacter = precomputedCodePointPredicate(cp => !isWordCharacter(cp));
-const fastIsLowerCase = precomputedCodePointPredicate(cp => unicode_properties_1.default.isLowerCase(cp));
-exports.fastIsUpperCase = precomputedCodePointPredicate(cp => unicode_properties_1.default.isUpperCase(cp));
-const fastNonLetter = precomputedCodePointPredicate(cp => !unicode_properties_1.default.isLowerCase(cp) && !unicode_properties_1.default.isUpperCase(cp));
+const fastIsLowerCase = precomputedCodePointPredicate(cp => unicode.isLowerCase(cp));
+export const fastIsUpperCase = precomputedCodePointPredicate(cp => unicode.isUpperCase(cp));
+const fastNonLetter = precomputedCodePointPredicate(cp => !unicode.isLowerCase(cp) && !unicode.isUpperCase(cp));
 const fastIsDigit = precomputedCodePointPredicate(isDigit);
-function splitIntoWords(s) {
+export function splitIntoWords(s) {
     // [start, end, allUpper]
     const intervals = [];
     let intervalStart = undefined;
@@ -313,7 +283,7 @@ function splitIntoWords(s) {
         return i >= len;
     }
     function currentCodePoint() {
-        return (0, Support_1.defined)(s.codePointAt(i));
+        return defined(s.codePointAt(i));
     }
     function skipWhile(p) {
         while (!atEnd()) {
@@ -332,7 +302,7 @@ function splitIntoWords(s) {
         skipWhile(fastIsLowerCase);
     }
     function skipUpperCase() {
-        skipWhile(exports.fastIsUpperCase);
+        skipWhile(fastIsUpperCase);
     }
     function skipNonLetter() {
         skipWhile(fastNonLetter);
@@ -341,14 +311,14 @@ function splitIntoWords(s) {
         skipWhile(fastIsDigit);
     }
     function startInterval() {
-        (0, Support_1.assert)(intervalStart === undefined, "Interval started before last one was committed");
+        assert(intervalStart === undefined, "Interval started before last one was committed");
         intervalStart = i;
     }
     function commitInterval() {
         if (intervalStart === undefined) {
-            return (0, Support_1.panic)("Tried to commit interval without starting one");
+            return panic("Tried to commit interval without starting one");
         }
-        (0, Support_1.assert)(i > intervalStart, "Interval must be non-empty");
+        assert(i > intervalStart, "Interval must be non-empty");
         // FIXME: This is a hack to avoid splitting up surrogates.  We shouldn't
         // look at surrogates individually in the first place.  When we
         // encounter a high surrogate we have to combine it with the low
@@ -363,7 +333,7 @@ function splitIntoWords(s) {
     }
     function intervalLength() {
         if (intervalStart === undefined) {
-            return (0, Support_1.panic)("Tried to get interval length without starting one");
+            return panic("Tried to get interval length without starting one");
         }
         return i - intervalStart;
     }
@@ -377,7 +347,7 @@ function splitIntoWords(s) {
             skipDigits();
             commitInterval();
         }
-        else if ((0, exports.fastIsUpperCase)(currentCodePoint())) {
+        else if (fastIsUpperCase(currentCodePoint())) {
             skipUpperCase();
             if (atEnd()) {
                 commitInterval();
@@ -411,31 +381,26 @@ function splitIntoWords(s) {
     }
     return words;
 }
-exports.splitIntoWords = splitIntoWords;
-function firstUpperWordStyle(s) {
-    (0, Support_1.assert)(s.length > 0, "Cannot style an empty string");
+export function firstUpperWordStyle(s) {
+    assert(s.length > 0, "Cannot style an empty string");
     return s[0].toUpperCase() + s.slice(1).toLowerCase();
 }
-exports.firstUpperWordStyle = firstUpperWordStyle;
-function allUpperWordStyle(s) {
+export function allUpperWordStyle(s) {
     return s.toUpperCase();
 }
-exports.allUpperWordStyle = allUpperWordStyle;
-function originalWord(s) {
+export function originalWord(s) {
     return s;
 }
-exports.originalWord = originalWord;
-function allLowerWordStyle(s) {
+export function allLowerWordStyle(s) {
     return s.toLowerCase();
 }
-exports.allLowerWordStyle = allLowerWordStyle;
 function styleWord(style, word) {
-    (0, Support_1.assert)(word.length > 0, "Tried to style an empty word");
+    assert(word.length > 0, "Tried to style an empty word");
     const result = style(word);
-    (0, Support_1.assert)(result.length > 0, "Word style must not make word empty");
+    assert(result.length > 0, "Word style must not make word empty");
     return result;
 }
-function combineWords(words, removeInvalidCharacters, firstWordStyle, restWordStyle, firstWordAcronymStyle, restAcronymStyle, separator, isStartCharacter) {
+export function combineWords(words, removeInvalidCharacters, firstWordStyle, restWordStyle, firstWordAcronymStyle, restAcronymStyle, separator, isStartCharacter) {
     const legalizedWords = [];
     for (const w of words) {
         const word = removeInvalidCharacters(w.word);
@@ -445,7 +410,7 @@ function combineWords(words, removeInvalidCharacters, firstWordStyle, restWordSt
     }
     if (legalizedWords.length === 0) {
         const validEmpty = removeInvalidCharacters("empty");
-        (0, Support_1.assert)(validEmpty.length > 0, 'Word "empty" is invalid in target language');
+        assert(validEmpty.length > 0, 'Word "empty" is invalid in target language');
         legalizedWords.push({ word: validEmpty, isAcronym: false });
     }
     const styledWords = [];
@@ -453,11 +418,11 @@ function combineWords(words, removeInvalidCharacters, firstWordStyle, restWordSt
     const firstStyle = first.isAcronym ? firstWordAcronymStyle : firstWordStyle;
     const styledFirstWord = styleWord(firstStyle, first.word);
     let restWords;
-    if (!isStartCharacter((0, Support_1.defined)(styledFirstWord.codePointAt(0)))) {
+    if (!isStartCharacter(defined(styledFirstWord.codePointAt(0)))) {
         const validThe = removeInvalidCharacters("the");
-        (0, Support_1.assert)(validThe.length > 0, 'Word "the" is invalid in the target language');
+        assert(validThe.length > 0, 'Word "the" is invalid in the target language');
         const styledThe = styleWord(firstWordStyle, validThe);
-        (0, Support_1.assert)(isStartCharacter((0, Support_1.defined)(styledThe.codePointAt(0))), 'The first character of styling "the" is not a start character');
+        assert(isStartCharacter(defined(styledThe.codePointAt(0))), 'The first character of styling "the" is not a start character');
         styledWords.push(styledThe);
         restWords = legalizedWords;
     }
@@ -471,13 +436,11 @@ function combineWords(words, removeInvalidCharacters, firstWordStyle, restWordSt
     }
     return styledWords.join(separator);
 }
-exports.combineWords = combineWords;
-function addPrefixIfNecessary(prefix, name) {
+export function addPrefixIfNecessary(prefix, name) {
     // Take care not to doubly-prefix type names
     return name.startsWith(prefix) ? name : prefix + name;
 }
-exports.addPrefixIfNecessary = addPrefixIfNecessary;
-function makeNameStyle(namingStyle, legalizeName, prefix) {
+export function makeNameStyle(namingStyle, legalizeName, prefix) {
     let separator;
     let firstWordStyle;
     let restWordStyle;
@@ -515,7 +478,7 @@ function makeNameStyle(namingStyle, legalizeName, prefix) {
             firstWordStyle = restWordStyle = firstWordAcronymStyle = restAcronymStyle = allUpperWordStyle;
             break;
         default:
-            return (0, Support_1.assertNever)(namingStyle);
+            return assertNever(namingStyle);
     }
     return (original) => {
         const words = splitIntoWords(original);
@@ -528,4 +491,3 @@ function makeNameStyle(namingStyle, legalizeName, prefix) {
         }
     };
 }
-exports.makeNameStyle = makeNameStyle;

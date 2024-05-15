@@ -1,8 +1,5 @@
-"use strict";
 /* eslint-disable */
 // Taken from https://github.com/Microsoft/TypeScript
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.isES3IdentifierPart = exports.isES3IdentifierStart = void 0;
 function lookupInUnicodeMap(code, map) {
     // Bail out quickly if it couldn't possibly be in the map.
     if (code < map[0]) {
@@ -28,15 +25,14 @@ function lookupInUnicodeMap(code, map) {
     }
     return false;
 }
-function isES3IdentifierStart(ch) {
+export function isES3IdentifierStart(ch) {
     return ((ch >= 65 /* CharacterCodes.A */ && ch <= 90 /* CharacterCodes.Z */) ||
         (ch >= 97 /* CharacterCodes.a */ && ch <= 122 /* CharacterCodes.z */) ||
         ch === 36 /* CharacterCodes.$ */ ||
         ch === 95 /* CharacterCodes._ */ ||
         (ch > 127 /* CharacterCodes.maxAsciiCharacter */ && lookupInUnicodeMap(ch, unicodeES3IdentifierStart)));
 }
-exports.isES3IdentifierStart = isES3IdentifierStart;
-function isES3IdentifierPart(ch) {
+export function isES3IdentifierPart(ch) {
     return ((ch >= 65 /* CharacterCodes.A */ && ch <= 90 /* CharacterCodes.Z */) ||
         (ch >= 97 /* CharacterCodes.a */ && ch <= 122 /* CharacterCodes.z */) ||
         (ch >= 48 /* CharacterCodes._0 */ && ch <= 57 /* CharacterCodes._9 */) ||
@@ -44,7 +40,6 @@ function isES3IdentifierPart(ch) {
         ch === 95 /* CharacterCodes._ */ ||
         (ch > 127 /* CharacterCodes.maxAsciiCharacter */ && lookupInUnicodeMap(ch, unicodeES3IdentifierPart)));
 }
-exports.isES3IdentifierPart = isES3IdentifierPart;
 /*
     As per ECMAScript Language Specification 3th Edition, Section 7.6: Identifiers
     IdentifierStart ::

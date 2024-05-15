@@ -1,59 +1,33 @@
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
+import * as _ from "lodash";
+import { anyTypeIssueAnnotation, nullTypeIssueAnnotation } from "../Annotation";
+import { ConvenienceRenderer } from "../ConvenienceRenderer";
+import { DependencyName, funPrefixNamer } from "../Naming";
+import { BooleanOption, getOptionValues } from "../RendererOptions";
+import { maybeAnnotated } from "../Source";
+import { AcronymStyleOptions, acronymOption, acronymStyle } from "../support/Acronyms";
+import { allLowerWordStyle, allUpperWordStyle, combineWords, escapeNonPrintableMapper, firstUpperWordStyle, isAscii, isDigit, isLetter, splitIntoWords, standardUnicodeHexEscape, utf16ConcatMap, utf16LegalizeCharacters } from "../support/Strings";
+import { defined } from "../support/Support";
+import { TargetLanguage } from "../TargetLanguage";
+import { directlyReachableSingleNamedType, matchType, nullableFromUnion } from "../TypeUtils";
+export const phpOptions = {
+    withGet: new BooleanOption("with-get", "Create Getter", true),
+    fastGet: new BooleanOption("fast-get", "getter without validation", false),
+    withSet: new BooleanOption("with-set", "Create Setter", false),
+    withClosing: new BooleanOption("with-closing", "PHP Closing Tag", false),
+    acronymStyle: acronymOption(AcronymStyleOptions.Pascal)
 };
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.PhpRenderer = exports.phpNameStyle = exports.stringEscape = exports.PhpTargetLanguage = exports.phpOptions = void 0;
-const _ = __importStar(require("lodash"));
-const Annotation_1 = require("../Annotation");
-const ConvenienceRenderer_1 = require("../ConvenienceRenderer");
-const Naming_1 = require("../Naming");
-const RendererOptions_1 = require("../RendererOptions");
-const Source_1 = require("../Source");
-const Acronyms_1 = require("../support/Acronyms");
-const Strings_1 = require("../support/Strings");
-const Support_1 = require("../support/Support");
-const TargetLanguage_1 = require("../TargetLanguage");
-const TypeUtils_1 = require("../TypeUtils");
-exports.phpOptions = {
-    withGet: new RendererOptions_1.BooleanOption("with-get", "Create Getter", true),
-    fastGet: new RendererOptions_1.BooleanOption("fast-get", "getter without validation", false),
-    withSet: new RendererOptions_1.BooleanOption("with-set", "Create Setter", false),
-    withClosing: new RendererOptions_1.BooleanOption("with-closing", "PHP Closing Tag", false),
-    acronymStyle: (0, Acronyms_1.acronymOption)(Acronyms_1.AcronymStyleOptions.Pascal)
-};
-class PhpTargetLanguage extends TargetLanguage_1.TargetLanguage {
+export class PhpTargetLanguage extends TargetLanguage {
     constructor() {
         super("PHP", ["php"], "php");
     }
     getOptions() {
-        return _.values(exports.phpOptions);
+        return _.values(phpOptions);
     }
     get supportsUnionsWithBothNumberTypes() {
         return true;
     }
     makeRenderer(renderContext, untypedOptionValues) {
-        const options = (0, RendererOptions_1.getOptionValues)(exports.phpOptions, untypedOptionValues);
+        const options = getOptionValues(phpOptions, untypedOptionValues);
         return new PhpRenderer(this, renderContext, options);
     }
     get stringTypeMapping() {
@@ -65,23 +39,21 @@ class PhpTargetLanguage extends TargetLanguage_1.TargetLanguage {
         return mapping;
     }
 }
-exports.PhpTargetLanguage = PhpTargetLanguage;
-exports.stringEscape = (0, Strings_1.utf16ConcatMap)((0, Strings_1.escapeNonPrintableMapper)(Strings_1.isAscii, Strings_1.standardUnicodeHexEscape));
+export const stringEscape = utf16ConcatMap(escapeNonPrintableMapper(isAscii, standardUnicodeHexEscape));
 function isStartCharacter(codePoint) {
     if (codePoint === 0x5f)
         return true; // underscore
-    return (0, Strings_1.isAscii)(codePoint) && (0, Strings_1.isLetter)(codePoint);
+    return isAscii(codePoint) && isLetter(codePoint);
 }
 function isPartCharacter(codePoint) {
-    return isStartCharacter(codePoint) || ((0, Strings_1.isAscii)(codePoint) && (0, Strings_1.isDigit)(codePoint));
+    return isStartCharacter(codePoint) || (isAscii(codePoint) && isDigit(codePoint));
 }
-const legalizeName = (0, Strings_1.utf16LegalizeCharacters)(isPartCharacter);
-function phpNameStyle(startWithUpper, upperUnderscore, original, acronymsStyle = Strings_1.allUpperWordStyle) {
-    const words = (0, Strings_1.splitIntoWords)(original);
-    return (0, Strings_1.combineWords)(words, legalizeName, upperUnderscore ? Strings_1.allUpperWordStyle : startWithUpper ? Strings_1.firstUpperWordStyle : Strings_1.allLowerWordStyle, upperUnderscore ? Strings_1.allUpperWordStyle : Strings_1.firstUpperWordStyle, upperUnderscore || startWithUpper ? Strings_1.allUpperWordStyle : Strings_1.allLowerWordStyle, acronymsStyle, upperUnderscore ? "_" : "", isStartCharacter);
+const legalizeName = utf16LegalizeCharacters(isPartCharacter);
+export function phpNameStyle(startWithUpper, upperUnderscore, original, acronymsStyle = allUpperWordStyle) {
+    const words = splitIntoWords(original);
+    return combineWords(words, legalizeName, upperUnderscore ? allUpperWordStyle : startWithUpper ? firstUpperWordStyle : allLowerWordStyle, upperUnderscore ? allUpperWordStyle : firstUpperWordStyle, upperUnderscore || startWithUpper ? allUpperWordStyle : allLowerWordStyle, acronymsStyle, upperUnderscore ? "_" : "", isStartCharacter);
 }
-exports.phpNameStyle = phpNameStyle;
-class PhpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
+export class PhpRenderer extends ConvenienceRenderer {
     constructor(targetLanguage, renderContext, _options) {
         super(targetLanguage, renderContext);
         this._options = _options;
@@ -106,18 +78,18 @@ class PhpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return this.getNameStyling("enumCaseNamingFunction");
     }
     unionNeedsName(u) {
-        return (0, TypeUtils_1.nullableFromUnion)(u) === null;
+        return nullableFromUnion(u) === null;
     }
     namedTypeToNameForTopLevel(type) {
-        return (0, TypeUtils_1.directlyReachableSingleNamedType)(type);
+        return directlyReachableSingleNamedType(type);
     }
     makeNamesForPropertyGetterAndSetter(_c, _className, _p, _jsonName, name) {
-        const getterName = new Naming_1.DependencyName(this.getNameStyling("propertyNamingFunction"), name.order, lookup => `get_${lookup(name)}`);
-        const setterName = new Naming_1.DependencyName(this.getNameStyling("propertyNamingFunction"), name.order, lookup => `set_${lookup(name)}`);
-        const validateName = new Naming_1.DependencyName(this.getNameStyling("propertyNamingFunction"), name.order, lookup => `validate_${lookup(name)}`);
-        const fromName = new Naming_1.DependencyName(this.getNameStyling("propertyNamingFunction"), name.order, lookup => `from_${lookup(name)}`);
-        const toName = new Naming_1.DependencyName(this.getNameStyling("propertyNamingFunction"), name.order, lookup => `to_${lookup(name)}`);
-        const sampleName = new Naming_1.DependencyName(this.getNameStyling("propertyNamingFunction"), name.order, lookup => `sample_${lookup(name)}`);
+        const getterName = new DependencyName(this.getNameStyling("propertyNamingFunction"), name.order, lookup => `get_${lookup(name)}`);
+        const setterName = new DependencyName(this.getNameStyling("propertyNamingFunction"), name.order, lookup => `set_${lookup(name)}`);
+        const validateName = new DependencyName(this.getNameStyling("propertyNamingFunction"), name.order, lookup => `validate_${lookup(name)}`);
+        const fromName = new DependencyName(this.getNameStyling("propertyNamingFunction"), name.order, lookup => `from_${lookup(name)}`);
+        const toName = new DependencyName(this.getNameStyling("propertyNamingFunction"), name.order, lookup => `to_${lookup(name)}`);
+        const sampleName = new DependencyName(this.getNameStyling("propertyNamingFunction"), name.order, lookup => `sample_${lookup(name)}`);
         return {
             getter: getterName,
             setter: setterName,
@@ -141,9 +113,9 @@ class PhpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     }
     getNameStyling(convention) {
         const styling = {
-            typeNamingFunction: (0, Naming_1.funPrefixNamer)("types", n => phpNameStyle(true, false, n, (0, Acronyms_1.acronymStyle)(this._options.acronymStyle))),
-            propertyNamingFunction: (0, Naming_1.funPrefixNamer)("properties", n => phpNameStyle(false, false, n, (0, Acronyms_1.acronymStyle)(this._options.acronymStyle))),
-            enumCaseNamingFunction: (0, Naming_1.funPrefixNamer)("enum-cases", n => phpNameStyle(true, true, n, (0, Acronyms_1.acronymStyle)(this._options.acronymStyle)))
+            typeNamingFunction: funPrefixNamer("types", n => phpNameStyle(true, false, n, acronymStyle(this._options.acronymStyle))),
+            propertyNamingFunction: funPrefixNamer("properties", n => phpNameStyle(false, false, n, acronymStyle(this._options.acronymStyle))),
+            enumCaseNamingFunction: funPrefixNamer("enum-cases", n => phpNameStyle(true, true, n, acronymStyle(this._options.acronymStyle)))
         };
         return styling[convention];
     }
@@ -175,8 +147,8 @@ class PhpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         function optionalize(s) {
             return [isOptional ? prefix : "", s, isOptional ? suffix : ""];
         }
-        return (0, TypeUtils_1.matchType)(t, _anyType => (0, Source_1.maybeAnnotated)(isOptional, Annotation_1.anyTypeIssueAnnotation, "Object"), _nullType => (0, Source_1.maybeAnnotated)(isOptional, Annotation_1.nullTypeIssueAnnotation, "Object"), _boolType => optionalize("bool"), _integerType => optionalize("int"), _doubleType => optionalize("float"), _stringType => optionalize("string"), _arrayType => optionalize("array"), classType => optionalize(this.nameForNamedType(classType)), _mapType => optionalize("stdClass"), enumType => optionalize(this.nameForNamedType(enumType)), unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+        return matchType(t, _anyType => maybeAnnotated(isOptional, anyTypeIssueAnnotation, "Object"), _nullType => maybeAnnotated(isOptional, nullTypeIssueAnnotation, "Object"), _boolType => optionalize("bool"), _integerType => optionalize("int"), _doubleType => optionalize("float"), _stringType => optionalize("string"), _arrayType => optionalize("array"), classType => optionalize(this.nameForNamedType(classType)), _mapType => optionalize("stdClass"), enumType => optionalize(this.nameForNamedType(enumType)), unionType => {
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null)
                 return this.phpType(true, nullable, true, prefix, suffix);
             return this.nameForNamedType(unionType);
@@ -197,8 +169,8 @@ class PhpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         });
     }
     phpDocConvertType(className, t) {
-        return (0, TypeUtils_1.matchType)(t, _anyType => "any", _nullType => "null", _boolType => "bool", _integerType => "int", _doubleType => "float", _stringType => "string", arrayType => [this.phpDocConvertType(className, arrayType.items), "[]"], _classType => _classType.getCombinedName(), _mapType => "stdClass", enumType => this.nameForNamedType(enumType), unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+        return matchType(t, _anyType => "any", _nullType => "null", _boolType => "bool", _integerType => "int", _doubleType => "float", _stringType => "string", arrayType => [this.phpDocConvertType(className, arrayType.items), "[]"], _classType => _classType.getCombinedName(), _mapType => "stdClass", enumType => this.nameForNamedType(enumType), unionType => {
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null) {
                 return [this.phpDocConvertType(className, nullable), "|null"];
             }
@@ -211,10 +183,10 @@ class PhpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         });
     }
     phpConvertType(className, t) {
-        return (0, TypeUtils_1.matchType)(t, _anyType => "any", _nullType => "null", _boolType => "bool", _integerType => "int", _doubleType => "float", _stringType => "string", _arrayType => "array", _classType => "stdClass", _mapType => "stdClass", _enumType => "string", // TODO number this.nameForNamedType(enumType),
+        return matchType(t, _anyType => "any", _nullType => "null", _boolType => "bool", _integerType => "int", _doubleType => "float", _stringType => "string", _arrayType => "array", _classType => "stdClass", _mapType => "stdClass", _enumType => "string", // TODO number this.nameForNamedType(enumType),
         // TODO number this.nameForNamedType(enumType),
         unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null) {
                 return ["?", this.phpConvertType(className, nullable)];
             }
@@ -227,7 +199,7 @@ class PhpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         });
     }
     phpToObjConvert(className, t, lhs, args) {
-        (0, TypeUtils_1.matchType)(t, _anyType => this.emitLine(...lhs, ...args, "; /*any*/"), _nullType => this.emitLine(...lhs, ...args, "; /*null*/"), _boolType => this.emitLine(...lhs, ...args, "; /*bool*/"), _integerType => this.emitLine(...lhs, ...args, "; /*int*/"), _doubleType => this.emitLine(...lhs, ...args, "; /*float*/"), _stringType => this.emitLine(...lhs, ...args, "; /*string*/"), arrayType => {
+        matchType(t, _anyType => this.emitLine(...lhs, ...args, "; /*any*/"), _nullType => this.emitLine(...lhs, ...args, "; /*null*/"), _boolType => this.emitLine(...lhs, ...args, "; /*bool*/"), _integerType => this.emitLine(...lhs, ...args, "; /*int*/"), _doubleType => this.emitLine(...lhs, ...args, "; /*float*/"), _stringType => this.emitLine(...lhs, ...args, "; /*string*/"), arrayType => {
             this.emitLine(...lhs, "array_map(function ($value) {");
             this.indent(() => {
                 this.phpToObjConvert(className, arrayType.items, ["return "], ["$value"]);
@@ -244,7 +216,7 @@ class PhpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             });
             this.emitLine("return to(", ...args, ");");
         }, enumType => this.emitLine(...lhs, this.nameForNamedType(enumType), "::to(", ...args, "); ", "/*enum*/"), unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null) {
                 this.emitLine("if (!is_null(", ...args, ")) {");
                 this.indent(() => this.phpToObjConvert(className, nullable, lhs, args));
@@ -269,7 +241,7 @@ class PhpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         // }
     }
     phpFromObjConvert(className, t, lhs, args) {
-        (0, TypeUtils_1.matchType)(t, _anyType => this.emitLine(...lhs, ...args, "; /*any*/"), _nullType => this.emitLine(...lhs, ...args, "; /*null*/"), _boolType => this.emitLine(...lhs, ...args, "; /*bool*/"), _integerType => this.emitLine(...lhs, ...args, "; /*int*/"), _doubleType => this.emitLine(...lhs, ...args, "; /*float*/"), _stringType => this.emitLine(...lhs, ...args, "; /*string*/"), arrayType => {
+        matchType(t, _anyType => this.emitLine(...lhs, ...args, "; /*any*/"), _nullType => this.emitLine(...lhs, ...args, "; /*null*/"), _boolType => this.emitLine(...lhs, ...args, "; /*bool*/"), _integerType => this.emitLine(...lhs, ...args, "; /*int*/"), _doubleType => this.emitLine(...lhs, ...args, "; /*float*/"), _stringType => this.emitLine(...lhs, ...args, "; /*string*/"), arrayType => {
             this.emitLine(...lhs, " array_map(function ($value) {");
             this.indent(() => {
                 this.phpFromObjConvert(className, arrayType.items, ["return "], ["$value"]);
@@ -286,7 +258,7 @@ class PhpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             });
             this.emitLine("return from(", ...args, ");");
         }, enumType => this.emitLine(...lhs, this.nameForNamedType(enumType), "::from(", ...args, "); ", "/*enum*/"), unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null) {
                 this.emitLine("if (!is_null(", ...args, ")) {");
                 this.indent(() => this.phpFromObjConvert(className, nullable, lhs, args));
@@ -307,7 +279,7 @@ class PhpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         });
     }
     phpSampleConvert(className, t, lhs, args, idx, suffix) {
-        (0, TypeUtils_1.matchType)(t, _anyType => this.emitLine(...lhs, "'AnyType::", className, "::", args, "::" + idx, "'", suffix, "/*", "" + idx, ":", args, "*/"), _nullType => this.emitLine(...lhs, "null", suffix, " /*", "" + idx, ":", args, "*/"), _boolType => this.emitLine(...lhs, "true", suffix, " /*", "" + idx, ":", args, "*/"), _integerType => this.emitLine(...lhs, "" + idx, suffix, " /*", "" + idx, ":", args, "*/"), _doubleType => this.emitLine(...lhs, "" + (idx + idx / 1000), suffix, " /*", "" + idx, ":", args, "*/"), _stringType => this.emitLine(...lhs, "'", className, "::", args, "::" + idx, "'", suffix, " /*", "" + idx, ":", args, "*/"), arrayType => {
+        matchType(t, _anyType => this.emitLine(...lhs, "'AnyType::", className, "::", args, "::" + idx, "'", suffix, "/*", "" + idx, ":", args, "*/"), _nullType => this.emitLine(...lhs, "null", suffix, " /*", "" + idx, ":", args, "*/"), _boolType => this.emitLine(...lhs, "true", suffix, " /*", "" + idx, ":", args, "*/"), _integerType => this.emitLine(...lhs, "" + idx, suffix, " /*", "" + idx, ":", args, "*/"), _doubleType => this.emitLine(...lhs, "" + (idx + idx / 1000), suffix, " /*", "" + idx, ":", args, "*/"), _stringType => this.emitLine(...lhs, "'", className, "::", args, "::" + idx, "'", suffix, " /*", "" + idx, ":", args, "*/"), arrayType => {
             this.emitLine(...lhs, " array(");
             this.indent(() => {
                 this.phpSampleConvert(className, arrayType.items, [], [], idx, "");
@@ -321,7 +293,7 @@ class PhpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             });
             this.emitLine("return sample();");
         }, enumType => this.emitLine(...lhs, this.nameForNamedType(enumType), "::sample()", suffix, " /*enum*/"), unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null) {
                 this.phpSampleConvert(className, nullable, lhs, args, idx, suffix);
                 return;
@@ -341,7 +313,7 @@ class PhpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         const is = (isfn, myT = className) => {
             this.emitBlock(["if (!", isfn, "(", scopeAttrName, "))"], () => this.emitLine('throw new Exception("Attribute Error:', myT, "::", attrName, '");'));
         };
-        (0, TypeUtils_1.matchType)(t, _anyType => is("defined"), _nullType => is("is_null"), _boolType => is("is_bool"), _integerType => is("is_integer"), _doubleType => is("is_float"), _stringType => is("is_string"), arrayType => {
+        matchType(t, _anyType => is("defined"), _nullType => is("is_null"), _boolType => is("is_bool"), _integerType => is("is_integer"), _doubleType => is("is_float"), _stringType => is("is_string"), arrayType => {
             is("is_array");
             this.emitLine("array_walk(", scopeAttrName, ", function(", scopeAttrName, "_v) {");
             this.indent(() => {
@@ -359,7 +331,7 @@ class PhpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         }, enumType => {
             this.emitLine(this.phpType(false, enumType), "::to(", scopeAttrName, ");");
         }, unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null) {
                 this.emitBlock(["if (!is_null(", scopeAttrName, "))"], () => {
                     this.phpValidate(className, nullable, attrName, scopeAttrName);
@@ -510,7 +482,7 @@ class PhpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             let idx = 31;
             this.forEachClassProperty(c, "leading-and-interposing", (name, jsonName, p) => {
                 const desc = this.descriptionForClassProperty(c, jsonName);
-                const names = (0, Support_1.defined)(this._gettersAndSettersForPropertyName.get(name));
+                const names = defined(this._gettersAndSettersForPropertyName.get(name));
                 this.ensureBlankLine();
                 this.emitFromMethod(names, p, className, name, desc);
                 this.ensureBlankLine();
@@ -529,7 +501,7 @@ class PhpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 let lines = [];
                 let p = "return ";
                 this.forEachClassProperty(c, "none", (name, _jsonName, _p) => {
-                    const names = (0, Support_1.defined)(this._gettersAndSettersForPropertyName.get(name));
+                    const names = defined(this._gettersAndSettersForPropertyName.get(name));
                     lines.push([p, className, "::", names.validate, "($this->", name, ")"]);
                     p = "|| ";
                 });
@@ -547,7 +519,7 @@ class PhpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             ], () => {
                 this.emitLine("$out = new stdClass();");
                 this.forEachClassProperty(c, "none", (name, jsonName) => {
-                    const names = (0, Support_1.defined)(this._gettersAndSettersForPropertyName.get(name));
+                    const names = defined(this._gettersAndSettersForPropertyName.get(name));
                     this.emitLine("$out->{'", jsonName, "'} = $this->", names.to, "();");
                 });
                 this.emitLine("return $out;");
@@ -566,14 +538,14 @@ class PhpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             ], () => {
                 if (this._options.fastGet) {
                     this.forEachClassProperty(c, "none", name => {
-                        const names = (0, Support_1.defined)(this._gettersAndSettersForPropertyName.get(name));
+                        const names = defined(this._gettersAndSettersForPropertyName.get(name));
                         this.emitLine(className, "::", names.validate, "($this->", name, ", true);");
                     });
                 }
                 this.emitLine("return new ", className, "(");
                 let comma = " ";
                 this.forEachClassProperty(c, "none", (name, jsonName) => {
-                    const names = (0, Support_1.defined)(this._gettersAndSettersForPropertyName.get(name));
+                    const names = defined(this._gettersAndSettersForPropertyName.get(name));
                     this.emitLine(comma, className, "::", names.from, "($obj->{'", jsonName, "'})");
                     comma = ",";
                 });
@@ -584,7 +556,7 @@ class PhpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 this.emitLine("return new ", className, "(");
                 let comma = " ";
                 this.forEachClassProperty(c, "none", name => {
-                    const names = (0, Support_1.defined)(this._gettersAndSettersForPropertyName.get(name));
+                    const names = defined(this._gettersAndSettersForPropertyName.get(name));
                     this.emitLine(comma, className, "::", names.sample, "()");
                     comma = ",";
                 });
@@ -648,7 +620,7 @@ class PhpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 this.indent(() => {
                     this.forEachEnumCase(e, "none", (name, jsonName) => {
                         // Todo String or Number
-                        this.emitLine("case ", enumName, "::$", name, "->enum: return '", (0, exports.stringEscape)(jsonName), "';");
+                        this.emitLine("case ", enumName, "::$", name, "->enum: return '", stringEscape(jsonName), "';");
                     });
                 });
                 this.emitLine("}");
@@ -671,7 +643,7 @@ class PhpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 this.indent(() => {
                     this.forEachEnumCase(e, "none", (name, jsonName) => {
                         // Todo String or Enum
-                        this.emitLine("case '", (0, exports.stringEscape)(jsonName), "': return ", enumName, "::$", name, ";");
+                        this.emitLine("case '", stringEscape(jsonName), "': return ", enumName, "::$", name, ";");
                     });
                 });
                 this.emitLine("}");
@@ -695,7 +667,6 @@ class PhpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         if (this._options.withClosing) {
             this.emitLine("?>");
         }
-        super.finishFile((0, Support_1.defined)(givenFilename));
+        super.finishFile(defined(givenFilename));
     }
 }
-exports.PhpRenderer = PhpRenderer;

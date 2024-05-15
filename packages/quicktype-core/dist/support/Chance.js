@@ -1,4 +1,3 @@
-"use strict";
 /* eslint-disable */
 // Mersenne Twister from https://gist.github.com/banksean/300494
 /*
@@ -34,8 +33,6 @@ Any feedback is very welcome.
 http://www.math.sci.hiroshima-u.ac.jp/~m-mat/MT/emt.html
 email: m-mat @ math.sci.hiroshima-u.ac.jp (remove space)
 */
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.Chance = void 0;
 class MersenneTwister {
     constructor(seed) {
         if (seed === undefined) {
@@ -106,7 +103,7 @@ class MersenneTwister {
     }
 }
 // https://github.com/chancejs/chancejs
-class Chance {
+export class Chance {
     constructor(seed) {
         this.seed = seed;
         // If no generator function was provided, use our MT
@@ -158,7 +155,6 @@ class Chance {
         return this.pick(cities);
     }
 }
-exports.Chance = Chance;
 const animals = {
     // list of ocean animals comes from https://owlcation.com/stem/list-of-ocean-animals
     ocean: [

@@ -1,4 +1,3 @@
-"use strict";
 // FIXME: NEEDS REFACTOR
 /* eslint-disable @typescript-eslint/no-shadow */
 /* eslint-disable @typescript-eslint/naming-convention */
@@ -24,19 +23,17 @@
  * - Support of pure Any type for example providing a callback from the application to handle these cases dynamically
  * See test/languages.ts for the test cases which are not implmented/checked.
  */
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.CJSONRenderer = exports.IncludeKind = exports.GlobalNames = exports.CJSONTargetLanguage = exports.cJSONOptions = void 0;
 /* Imports */
-const AccessorNames_1 = require("../attributes/AccessorNames");
-const EnumValues_1 = require("../attributes/EnumValues");
-const ConvenienceRenderer_1 = require("../ConvenienceRenderer");
-const Naming_1 = require("../Naming");
-const RendererOptions_1 = require("../RendererOptions");
-const Strings_1 = require("../support/Strings");
-const Support_1 = require("../support/Support");
-const TargetLanguage_1 = require("../TargetLanguage");
-const Type_1 = require("../Type");
-const TypeUtils_1 = require("../TypeUtils");
+import { getAccessorName } from "../attributes/AccessorNames";
+import { enumCaseValues } from "../attributes/EnumValues";
+import { ConvenienceRenderer } from "../ConvenienceRenderer";
+import { funPrefixNamer } from "../Naming";
+import { EnumOption, StringOption, getOptionValues } from "../RendererOptions";
+import { allUpperWordStyle, isAscii, isLetterOrUnderscoreOrDigit, legalizeCharacters, makeNameStyle } from "../support/Strings";
+import { assert, assertNever, defined, numberEnumValues, panic } from "../support/Support";
+import { TargetLanguage } from "../TargetLanguage";
+import { ArrayType, ClassType, EnumType, MapType, UnionType } from "../Type";
+import { matchType, nullableFromUnion, removeNullFromUnion } from "../TypeUtils";
 /* Naming styles */
 const pascalValue = ["pascal-case", "pascal"];
 const underscoreValue = ["underscore-case", "underscore"];
@@ -45,27 +42,27 @@ const upperUnderscoreValue = ["upper-underscore-case", "upper-underscore"];
 const pascalUpperAcronymsValue = ["pascal-case-upper-acronyms", "pascal-upper-acronyms"];
 const camelUpperAcronymsValue = ["camel-case-upper-acronyms", "camel-upper-acronyms"];
 /* cJSON generator options */
-exports.cJSONOptions = {
-    typeSourceStyle: new RendererOptions_1.EnumOption("source-style", "Source code generation type, whether to generate single or multiple source files", [
+export const cJSONOptions = {
+    typeSourceStyle: new EnumOption("source-style", "Source code generation type, whether to generate single or multiple source files", [
         ["single-source", true],
         ["multi-source", false]
     ], "single-source", "secondary"),
-    typeIntegerSize: new RendererOptions_1.EnumOption("integer-size", "Integer code generation type (int64_t by default)", [
+    typeIntegerSize: new EnumOption("integer-size", "Integer code generation type (int64_t by default)", [
         ["int8_t", "int8_t"],
         ["int16_t", "int16_t"],
         ["int32_t", "int32_t"],
         ["int64_t", "int64_t"]
     ], "int64_t", "secondary"),
-    hashtableSize: new RendererOptions_1.StringOption("hashtable-size", "Hashtable size, used when maps are created (64 by default)", "SIZE", "64"),
-    addTypedefAlias: new RendererOptions_1.EnumOption("typedef-alias", "Add typedef alias to unions, structs, and enums (no typedef by default)", [
+    hashtableSize: new StringOption("hashtable-size", "Hashtable size, used when maps are created (64 by default)", "SIZE", "64"),
+    addTypedefAlias: new EnumOption("typedef-alias", "Add typedef alias to unions, structs, and enums (no typedef by default)", [
         ["no-typedef", false],
         ["add-typedef", true]
     ], "no-typedef", "secondary"),
-    printStyle: new RendererOptions_1.EnumOption("print-style", "Which cJSON print should be used (formatted by default)", [
+    printStyle: new EnumOption("print-style", "Which cJSON print should be used (formatted by default)", [
         ["print-formatted", false],
         ["print-unformatted", true]
     ], "print-formatted", "secondary"),
-    typeNamingStyle: new RendererOptions_1.EnumOption("type-style", "Naming style for types", [
+    typeNamingStyle: new EnumOption("type-style", "Naming style for types", [
         pascalValue,
         underscoreValue,
         camelValue,
@@ -73,7 +70,7 @@ exports.cJSONOptions = {
         pascalUpperAcronymsValue,
         camelUpperAcronymsValue
     ]),
-    memberNamingStyle: new RendererOptions_1.EnumOption("member-style", "Naming style for members", [
+    memberNamingStyle: new EnumOption("member-style", "Naming style for members", [
         underscoreValue,
         pascalValue,
         camelValue,
@@ -81,7 +78,7 @@ exports.cJSONOptions = {
         pascalUpperAcronymsValue,
         camelUpperAcronymsValue
     ]),
-    enumeratorNamingStyle: new RendererOptions_1.EnumOption("enumerator-style", "Naming style for enumerators", [
+    enumeratorNamingStyle: new EnumOption("enumerator-style", "Naming style for enumerators", [
         upperUnderscoreValue,
         underscoreValue,
         pascalValue,
@@ -91,7 +88,7 @@ exports.cJSONOptions = {
     ])
 };
 /* cJSON generator target language */
-class CJSONTargetLanguage extends TargetLanguage_1.TargetLanguage {
+export class CJSONTargetLanguage extends TargetLanguage {
     /**
      * Constructor
      * @param displayName: display name
@@ -107,14 +104,14 @@ class CJSONTargetLanguage extends TargetLanguage_1.TargetLanguage {
      */
     getOptions() {
         return [
-            exports.cJSONOptions.typeSourceStyle,
-            exports.cJSONOptions.typeIntegerSize,
-            exports.cJSONOptions.addTypedefAlias,
-            exports.cJSONOptions.printStyle,
-            exports.cJSONOptions.hashtableSize,
-            exports.cJSONOptions.typeNamingStyle,
-            exports.cJSONOptions.memberNamingStyle,
-            exports.cJSONOptions.enumeratorNamingStyle
+            cJSONOptions.typeSourceStyle,
+            cJSONOptions.typeIntegerSize,
+            cJSONOptions.addTypedefAlias,
+            cJSONOptions.printStyle,
+            cJSONOptions.hashtableSize,
+            cJSONOptions.typeNamingStyle,
+            cJSONOptions.memberNamingStyle,
+            cJSONOptions.enumeratorNamingStyle
         ];
     }
     /**
@@ -138,12 +135,11 @@ class CJSONTargetLanguage extends TargetLanguage_1.TargetLanguage {
      * @return cJSON renderer
      */
     makeRenderer(renderContext, untypedOptionValues) {
-        return new CJSONRenderer(this, renderContext, (0, RendererOptions_1.getOptionValues)(exports.cJSONOptions, untypedOptionValues));
+        return new CJSONRenderer(this, renderContext, getOptionValues(cJSONOptions, untypedOptionValues));
     }
 }
-exports.CJSONTargetLanguage = CJSONTargetLanguage;
 /* Function used to format names */
-const legalizeName = (0, Strings_1.legalizeCharacters)(cp => (0, Strings_1.isAscii)(cp) && (0, Strings_1.isLetterOrUnderscoreOrDigit)(cp));
+const legalizeName = legalizeCharacters(cp => isAscii(cp) && isLetterOrUnderscoreOrDigit(cp));
 /* Forbidden names for namespace */
 const keywords = [
     /* C and C++ keywords */
@@ -267,7 +263,7 @@ const keywords = [
     "True"
 ];
 /* Used to build forbidden global names */
-var GlobalNames;
+export var GlobalNames;
 (function (GlobalNames) {
     GlobalNames[GlobalNames["ClassMemberConstraints"] = 1] = "ClassMemberConstraints";
     GlobalNames[GlobalNames["ClassMemberConstraintException"] = 2] = "ClassMemberConstraintException";
@@ -277,15 +273,15 @@ var GlobalNames;
     GlobalNames[GlobalNames["ValueTooLongException"] = 6] = "ValueTooLongException";
     GlobalNames[GlobalNames["InvalidPatternException"] = 7] = "InvalidPatternException";
     GlobalNames[GlobalNames["CheckConstraint"] = 8] = "CheckConstraint";
-})(GlobalNames = exports.GlobalNames || (exports.GlobalNames = {}));
+})(GlobalNames || (GlobalNames = {}));
 /* To be able to support circles in multiple files - e.g. class#A using class#B using class#A (obviously not directly) we can forward declare them */
-var IncludeKind;
+export var IncludeKind;
 (function (IncludeKind) {
     IncludeKind["ForwardDeclare"] = "ForwardDeclare";
     IncludeKind["Include"] = "Include";
-})(IncludeKind = exports.IncludeKind || (exports.IncludeKind = {}));
+})(IncludeKind || (IncludeKind = {}));
 /* cJSON renderer */
-class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
+export class CJSONRenderer extends ConvenienceRenderer {
     /**
      * Constructor
      * @param targetLanguage: target language
@@ -298,11 +294,11 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         this.typeIntegerSize = _options.typeIntegerSize;
         this.hashtableSize = _options.hashtableSize;
         this.typeNamingStyle = _options.typeNamingStyle;
-        this.namedTypeNameStyle = (0, Strings_1.makeNameStyle)(this.typeNamingStyle, legalizeName);
+        this.namedTypeNameStyle = makeNameStyle(this.typeNamingStyle, legalizeName);
         this.enumeratorNamingStyle = _options.enumeratorNamingStyle;
-        this.memberNameStyle = (0, Strings_1.makeNameStyle)(_options.memberNamingStyle, legalizeName);
+        this.memberNameStyle = makeNameStyle(_options.memberNamingStyle, legalizeName);
         this.forbiddenGlobalNames = [];
-        for (const type of (0, Support_1.numberEnumValues)(GlobalNames)) {
+        for (const type of numberEnumValues(GlobalNames)) {
             const genName = this.namedTypeNameStyle(GlobalNames[type]);
             this.forbiddenGlobalNames.push(genName);
         }
@@ -340,28 +336,28 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
      * @return types member namer
      */
     makeNamedTypeNamer() {
-        return (0, Naming_1.funPrefixNamer)("types", this.namedTypeNameStyle);
+        return funPrefixNamer("types", this.namedTypeNameStyle);
     }
     /**
      * Build object properties member names
      * @return object properties member namer
      */
     namerForObjectProperty() {
-        return (0, Naming_1.funPrefixNamer)("members", this.memberNameStyle);
+        return funPrefixNamer("members", this.memberNameStyle);
     }
     /**
      * Build union member names
      * @return union member namer
      */
     makeUnionMemberNamer() {
-        return (0, Naming_1.funPrefixNamer)("members", this.memberNameStyle);
+        return funPrefixNamer("members", this.memberNameStyle);
     }
     /**
      * Build enum member names
      * @return enum member namer
      */
     makeEnumCaseNamer() {
-        return (0, Naming_1.funPrefixNamer)("enumerators", (0, Strings_1.makeNameStyle)(this.enumeratorNamingStyle, legalizeName));
+        return funPrefixNamer("enumerators", makeNameStyle(this.enumeratorNamingStyle, legalizeName));
     }
     /**
      * Override of super proposeUnionMemberName function
@@ -419,21 +415,21 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             }
             else if (decl.kind === "define") {
                 const type = decl.type;
-                if (type instanceof Type_1.ClassType) {
+                if (type instanceof ClassType) {
                     this.emitClassTypedef(type);
                 }
-                else if (type instanceof Type_1.EnumType) {
+                else if (type instanceof EnumType) {
                     this.emitEnumTypedef(type);
                 }
-                else if (type instanceof Type_1.UnionType) {
+                else if (type instanceof UnionType) {
                     this.emitUnionTypedef(type);
                 }
                 else {
-                    (0, Support_1.panic)("Cannot declare type");
+                    panic("Cannot declare type");
                 }
             }
             else {
-                (0, Support_1.assertNever)(decl.kind);
+                assertNever(decl.kind);
             }
         });
         /* Create top level type */
@@ -503,13 +499,13 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     emitEnumTypedef(enumType) {
         /* FIXME: Now there is a language with need of global enum name, see FIXME in makeNameForEnumCase of ConvenienceRenderer.ts, should simplify here when fixed */
         const enumName = this.nameForNamedType(enumType);
-        const enumValues = (0, EnumValues_1.enumCaseValues)(enumType, this.targetLanguage.name);
+        const enumValues = enumCaseValues(enumType, this.targetLanguage.name);
         this.emitDescription(this.descriptionForType(enumType));
         this.emitBlock(["enum ", enumName], () => {
-            const combinedName = (0, Strings_1.allUpperWordStyle)(this.sourcelikeToString(enumName));
+            const combinedName = allUpperWordStyle(this.sourcelikeToString(enumName));
             this.forEachEnumCase(enumType, "none", (name, jsonName) => {
                 if (enumValues !== undefined) {
-                    const [enumValue] = (0, AccessorNames_1.getAccessorName)(enumValues, jsonName);
+                    const [enumValue] = getAccessorName(enumValues, jsonName);
                     if (enumValue !== undefined) {
                         this.emitLine(combinedName, "_", name, " = ", enumValue.toString(), ",");
                     }
@@ -546,7 +542,7 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             this.emitLine("enum ", enumName, " x = 0;");
             this.emitBlock(["if (NULL != j)"], () => {
                 let onFirst = true;
-                const combinedName = (0, Strings_1.allUpperWordStyle)(this.sourcelikeToString(enumName));
+                const combinedName = allUpperWordStyle(this.sourcelikeToString(enumName));
                 this.forEachEnumCase(enumType, "none", (name, jsonName) => {
                     this.emitLine(onFirst ? "" : "else ", 'if (!strcmp(cJSON_GetStringValue(j), "', jsonName, '")) x = ', combinedName, "_", name, ";");
                     onFirst = false;
@@ -559,7 +555,7 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         this.emitBlock(["cJSON * cJSON_Create", enumName, "(", this.withConst(["enum ", enumName]), " x)"], () => {
             this.emitLine("cJSON * j = NULL;");
             this.emitBlock(["switch (x)"], () => {
-                const combinedName = (0, Strings_1.allUpperWordStyle)(this.sourcelikeToString(enumName));
+                const combinedName = allUpperWordStyle(this.sourcelikeToString(enumName));
                 this.forEachEnumCase(enumType, "none", (name, jsonName) => {
                     this.emitLine("case ", combinedName, "_", name, ': j = cJSON_CreateString("', jsonName, '"); break;');
                 });
@@ -596,7 +592,7 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
      */
     emitUnionTypedef(unionType) {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const [_hasNull, nonNulls] = (0, TypeUtils_1.removeNullFromUnion)(unionType);
+        const [_hasNull, nonNulls] = removeNullFromUnion(unionType);
         const unionName = this.nameForNamedType(unionType);
         this.emitDescription(this.descriptionForType(unionType));
         this.emitBlock(["struct ", unionName], () => {
@@ -627,7 +623,7 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
      * @param unionType: union type
      */
     emitUnionFunctions(unionType) {
-        const [hasNull, nonNulls] = (0, TypeUtils_1.removeNullFromUnion)(unionType);
+        const [hasNull, nonNulls] = removeNullFromUnion(unionType);
         const unionName = this.nameForNamedType(unionType);
         /* Create cJSON to unionType generator function */
         this.emitBlock(["struct ", unionName, " * cJSON_Get", unionName, "Value(const cJSON * j)"], () => {
@@ -1154,7 +1150,7 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 this.emitBlock(["if (NULL != (x = cJSON_malloc(sizeof(struct ", className, "))))"], () => {
                     this.emitLine("memset(x, 0, sizeof(struct ", className, "));");
                     const recur = (type, level) => {
-                        if (type instanceof Type_1.ArrayType) {
+                        if (type instanceof ArrayType) {
                             const child_level = level + 1;
                             const cJSON = this.quicktypeTypeToCJSON(type.items, false);
                             this.emitLine("list_t * x", child_level.toString(), " = list_create(false, NULL);");
@@ -1193,7 +1189,7 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                                 });
                             });
                         }
-                        else if (type instanceof Type_1.ClassType) {
+                        else if (type instanceof ClassType) {
                             this.forEachClassProperty(type, "none", (name, jsonName, property) => {
                                 const cJSON = this.quicktypeTypeToCJSON(property.type, property.isOptional);
                                 this.emitBlock(!cJSON.isNullable
@@ -1232,13 +1228,13 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                                                 const add = (type, cJSON, level, child_level) => {
                                                     var _a, _b, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s;
                                                     if (((_a = cJSON.items) === null || _a === void 0 ? void 0 : _a.cjsonType) === "cJSON_Array") {
-                                                        if (type instanceof Type_1.ArrayType) {
+                                                        if (type instanceof ArrayType) {
                                                             const child_level2 = child_level + 1;
                                                             recur(type.items, child_level);
                                                             this.emitLine("list_add_tail(x", child_level.toString(), ", x", child_level2.toString(), ", sizeof(", (_b = cJSON.items) === null || _b === void 0 ? void 0 : _b.cType, " *));");
                                                         }
                                                         else {
-                                                            (0, Support_1.panic)("Invalid type");
+                                                            panic("Invalid type");
                                                         }
                                                     }
                                                     else if (((_d = cJSON.items) === null || _d === void 0 ? void 0 : _d.cjsonType) === "cJSON_Map") {
@@ -1310,13 +1306,13 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                                                 const add = (type, cJSON, level, child_level) => {
                                                     var _a, _b, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s;
                                                     if (((_a = cJSON.items) === null || _a === void 0 ? void 0 : _a.cjsonType) === "cJSON_Array") {
-                                                        if (type instanceof Type_1.MapType) {
+                                                        if (type instanceof MapType) {
                                                             const child_level2 = child_level + 1;
                                                             recur(type.values, child_level);
                                                             this.emitLine("hashtable_add(x", child_level.toString(), ", e", child_level.toString(), "->string, x", child_level2.toString(), ", sizeof(", (_b = cJSON.items) === null || _b === void 0 ? void 0 : _b.cType, " *));");
                                                         }
                                                         else {
-                                                            (0, Support_1.panic)("Invalid type");
+                                                            panic("Invalid type");
                                                         }
                                                     }
                                                     else if (((_d = cJSON.items) === null || _d === void 0 ? void 0 : _d.cjsonType) === "cJSON_Map") {
@@ -1452,7 +1448,7 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             this.emitBlock(["if (NULL != x)"], () => {
                 this.emitBlock(["if (NULL != (j = cJSON_CreateObject()))"], () => {
                     const recur = (type, level) => {
-                        if (type instanceof Type_1.ArrayType) {
+                        if (type instanceof ArrayType) {
                             const child_level = level + 1;
                             const cJSON = this.quicktypeTypeToCJSON(type.items, false);
                             this.emitLine("cJSON * j", child_level.toString(), " = cJSON_CreateArray();");
@@ -1485,7 +1481,7 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                                 });
                             });
                         }
-                        else if (type instanceof Type_1.ClassType) {
+                        else if (type instanceof ClassType) {
                             this.forEachClassProperty(type, "none", (name, jsonName, property) => {
                                 const cJSON = this.quicktypeTypeToCJSON(property.type, property.isOptional);
                                 if (cJSON.cjsonType === "cJSON_Array" && cJSON.items !== undefined) {
@@ -1502,13 +1498,13 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                                                 const add = (type, cJSON, child_level) => {
                                                     var _a, _b, _d, _e, _f, _g, _h, _j, _k, _l;
                                                     if (((_a = cJSON.items) === null || _a === void 0 ? void 0 : _a.cjsonType) === "cJSON_Array") {
-                                                        if (type instanceof Type_1.ArrayType) {
+                                                        if (type instanceof ArrayType) {
                                                             const child_level2 = child_level + 1;
                                                             recur(type.items, child_level);
                                                             this.emitLine("cJSON_AddItemToArray(j", child_level.toString(), ", j", child_level2.toString(), ");");
                                                         }
                                                         else {
-                                                            (0, Support_1.panic)("Invalid type");
+                                                            panic("Invalid type");
                                                         }
                                                     }
                                                     else if (((_b = cJSON.items) === null || _b === void 0 ? void 0 : _b.cjsonType) === "cJSON_Map") {
@@ -1577,13 +1573,13 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                                                     const add = (type, cJSON, child_level) => {
                                                         var _a, _b, _d, _e, _f, _g, _h, _j, _k, _l;
                                                         if (((_a = cJSON.items) === null || _a === void 0 ? void 0 : _a.cjsonType) === "cJSON_Array") {
-                                                            if (type instanceof Type_1.MapType) {
+                                                            if (type instanceof MapType) {
                                                                 const child_level2 = child_level + 1;
                                                                 recur(type.values, child_level);
                                                                 this.emitLine(cJSON.addToObject, "(j", child_level.toString(), ", keys", child_level.toString(), "[index", child_level.toString(), "], j", child_level2.toString(), ");");
                                                             }
                                                             else {
-                                                                (0, Support_1.panic)("Invalid type");
+                                                                panic("Invalid type");
                                                             }
                                                         }
                                                         else if (((_b = cJSON.items) === null || _b === void 0 ? void 0 : _b.cjsonType) === "cJSON_Map") {
@@ -1713,7 +1709,7 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         this.emitBlock(["void cJSON_Delete", className, "(struct ", className, " * x)"], () => {
             this.emitBlock(["if (NULL != x)"], () => {
                 const recur = (type, level) => {
-                    if (type instanceof Type_1.ArrayType) {
+                    if (type instanceof ArrayType) {
                         const child_level = level + 1;
                         const cJSON = this.quicktypeTypeToCJSON(type.items, false);
                         this.emitLine(cJSON.cType, " * x", child_level.toString(), " = list_get_head(x", level.toString(), ");");
@@ -1734,7 +1730,7 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                             this.emitLine("x", child_level.toString(), " = list_get_next(x", level.toString(), ");");
                         });
                     }
-                    else if (type instanceof Type_1.ClassType) {
+                    else if (type instanceof ClassType) {
                         this.forEachClassProperty(type, "none", (name, _jsonName, property) => {
                             const cJSON = this.quicktypeTypeToCJSON(property.type, property.isOptional);
                             if (cJSON.cjsonType === "cJSON_Array" && cJSON.items !== undefined) {
@@ -1747,12 +1743,12 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                                     this.emitBlock(["while (NULL != x", child_level.toString(), ")"], () => {
                                         var _a, _b, _d, _e, _f, _g, _h;
                                         if (((_a = cJSON.items) === null || _a === void 0 ? void 0 : _a.cjsonType) === "cJSON_Array") {
-                                            if (property.type instanceof Type_1.ArrayType) {
+                                            if (property.type instanceof ArrayType) {
                                                 recur(property.type.items, child_level);
                                                 this.emitLine((_b = cJSON.items) === null || _b === void 0 ? void 0 : _b.deleteType, "(x", child_level.toString(), ");");
                                             }
                                             else {
-                                                (0, Support_1.panic)("Invalid type");
+                                                panic("Invalid type");
                                             }
                                         }
                                         else if (((_d = cJSON.items) === null || _d === void 0 ? void 0 : _d.cjsonType) === "cJSON_Map") {
@@ -1806,12 +1802,12 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                                             this.emitBlock(["if (NULL != x", child_level.toString(), ")"], () => {
                                                 var _a, _b, _d, _e, _f, _g, _h;
                                                 if (((_a = cJSON.items) === null || _a === void 0 ? void 0 : _a.cjsonType) === "cJSON_Array") {
-                                                    if (property.type instanceof Type_1.MapType) {
+                                                    if (property.type instanceof MapType) {
                                                         recur(property.type.values, child_level);
                                                         this.emitLine((_b = cJSON.items) === null || _b === void 0 ? void 0 : _b.deleteType, "(x", child_level.toString(), ");");
                                                     }
                                                     else {
-                                                        (0, Support_1.panic)("Invalid type");
+                                                        panic("Invalid type");
                                                     }
                                                 }
                                                 else if (((_d = cJSON.items) === null || _d === void 0 ? void 0 : _d.cjsonType) === "cJSON_Map") {
@@ -2264,7 +2260,7 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
      */
     quicktypeTypeToCJSON(t, isOptional, isNullable = false) {
         /* Compute cJSON type */
-        return (0, TypeUtils_1.matchType)(t, _anyType => {
+        return matchType(t, _anyType => {
             return {
                 cType: "void",
                 optionalQualifier: "*",
@@ -2397,7 +2393,7 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 isNullable
             };
         }, unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null) {
                 return this.quicktypeTypeToCJSON(nullable, true, true);
             }
@@ -2423,7 +2419,7 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
      */
     startFile(proposedFilename) {
         /* Check if previous file is closed, create a new file */
-        (0, Support_1.assert)(this.currentFilename === undefined, "Previous file wasn't finished");
+        assert(this.currentFilename === undefined, "Previous file wasn't finished");
         if (proposedFilename !== undefined) {
             this.currentFilename = this.sourcelikeToString(proposedFilename);
         }
@@ -2442,8 +2438,8 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             ]);
             this.ensureBlankLine();
             /* Write include guard */
-            this.emitLine("#ifndef __", (0, Strings_1.allUpperWordStyle)(this.currentFilename.replace(new RegExp(/[^a-zA-Z0-9]+/, "g"), "_")), "__");
-            this.emitLine("#define __", (0, Strings_1.allUpperWordStyle)(this.currentFilename.replace(new RegExp(/[^a-zA-Z0-9]+/, "g"), "_")), "__");
+            this.emitLine("#ifndef __", allUpperWordStyle(this.currentFilename.replace(new RegExp(/[^a-zA-Z0-9]+/, "g"), "_")), "__");
+            this.emitLine("#define __", allUpperWordStyle(this.currentFilename.replace(new RegExp(/[^a-zA-Z0-9]+/, "g"), "_")), "__");
             this.ensureBlankLine();
             /* Write C++ guard */
             this.emitLine("#ifdef __cplusplus");
@@ -2484,10 +2480,10 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             this.emitLine("#endif");
             this.ensureBlankLine();
             /* Write include guard */
-            this.emitLine("#endif /* __", (0, Strings_1.allUpperWordStyle)(this.currentFilename.replace(new RegExp(/[^a-zA-Z0-9]+/, "g"), "_")), "__ */");
+            this.emitLine("#endif /* __", allUpperWordStyle(this.currentFilename.replace(new RegExp(/[^a-zA-Z0-9]+/, "g"), "_")), "__ */");
             this.ensureBlankLine();
             /* Close file */
-            super.finishFile((0, Support_1.defined)(this.currentFilename));
+            super.finishFile(defined(this.currentFilename));
             this.currentFilename = undefined;
         }
     }
@@ -2571,10 +2567,10 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     emitIncludes(type, filename) {
         /* List required includes */
         const includes = new Map();
-        if (type instanceof Type_1.UnionType) {
+        if (type instanceof UnionType) {
             this.updateIncludes(false, includes, type);
         }
-        else if (type instanceof Type_1.ClassType) {
+        else if (type instanceof ClassType) {
             this.forEachClassProperty(type, "none", (_name, _jsonName, property) => {
                 this.updateIncludes(true, includes, property.type);
             });
@@ -2601,7 +2597,7 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         for (const t of propTypes) {
             const typeName = this.sourcelikeToString(t.name);
             const propRecord = { kind: undefined, typeKind: undefined };
-            if (t.type instanceof Type_1.ClassType) {
+            if (t.type instanceof ClassType) {
                 /* We can NOT forward declare direct class members, e.g. a class type is included at level#0 */
                 /* HOWEVER if it is not a direct class member, then we can SURELY forward declare it */
                 propRecord.typeKind = "class";
@@ -2610,14 +2606,14 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                     propRecord.kind = IncludeKind.Include;
                 }
             }
-            else if (t.type instanceof Type_1.EnumType) {
+            else if (t.type instanceof EnumType) {
                 propRecord.typeKind = "enum";
                 propRecord.kind = IncludeKind.ForwardDeclare;
             }
-            else if (t.type instanceof Type_1.UnionType) {
+            else if (t.type instanceof UnionType) {
                 propRecord.typeKind = "union";
                 /* Recurse into the union */
-                const [maybeNull] = (0, TypeUtils_1.removeNullFromUnion)(t.type, true);
+                const [maybeNull] = removeNullFromUnion(t.type, true);
                 if (maybeNull !== undefined) {
                     /* Houston this is a variant, include it */
                     propRecord.kind = IncludeKind.Include;
@@ -2652,10 +2648,10 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     generatedTypes(isClassMember, type) {
         const result = [];
         const recur = (forceInclude, isVariant, l, t) => {
-            if (t instanceof Type_1.ArrayType) {
+            if (t instanceof ArrayType) {
                 recur(forceInclude, isVariant, l + 1, t.items);
             }
-            else if (t instanceof Type_1.ClassType) {
+            else if (t instanceof ClassType) {
                 result.push({
                     name: this.nameForNamedType(t),
                     type: t,
@@ -2664,10 +2660,10 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                     forceInclude
                 });
             }
-            else if (t instanceof Type_1.MapType) {
+            else if (t instanceof MapType) {
                 recur(forceInclude, isVariant, l + 1, t.values);
             }
-            else if (t instanceof Type_1.EnumType) {
+            else if (t instanceof EnumType) {
                 result.push({
                     name: this.nameForNamedType(t),
                     type: t,
@@ -2676,7 +2672,7 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                     forceInclude: false
                 });
             }
-            else if (t instanceof Type_1.UnionType) {
+            else if (t instanceof UnionType) {
                 /**
                  * If we have a union as a class member and we see it as a "named union",
                  * we can safely include it as-is.
@@ -2702,7 +2698,7 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                     });
                     /** intentional "fall-through", add all subtypes as well - but forced include */
                 }
-                const [hasNull, nonNulls] = (0, TypeUtils_1.removeNullFromUnion)(t);
+                const [hasNull, nonNulls] = removeNullFromUnion(t);
                 isVariant = hasNull !== null;
                 /** we need to collect all the subtypes of the union */
                 for (const tt of nonNulls) {
@@ -2714,4 +2710,3 @@ class CJSONRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return result;
     }
 }
-exports.CJSONRenderer = CJSONRenderer;

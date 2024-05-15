@@ -1,34 +1,8 @@
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.numberEnumValues = exports.indentationString = exports.parseJSON = exports.inflateBase64 = exports.errorMessage = exports.repeatedCall = exports.repeated = exports.mustNotHappen = exports.panic = exports.assert = exports.assertNever = exports.nonNull = exports.defined = exports.checkArray = exports.checkStringMap = exports.checkString = exports.isStringMap = void 0;
-const js_base64_1 = require("js-base64");
-const pako = __importStar(require("pako"));
-const YAML = __importStar(require("yaml"));
-const Messages_1 = require("../Messages");
-function isStringMap(x, checkValue) {
+import { Base64 } from "js-base64";
+import * as pako from "pako";
+import * as YAML from "yaml";
+import { messageError } from "../Messages";
+export function isStringMap(x, checkValue) {
     if (typeof x !== "object" || Array.isArray(x) || x === null) {
         return false;
     }
@@ -42,12 +16,10 @@ function isStringMap(x, checkValue) {
     }
     return true;
 }
-exports.isStringMap = isStringMap;
-function checkString(x) {
+export function checkString(x) {
     return typeof x === "string";
 }
-exports.checkString = checkString;
-function checkStringMap(x, checkValue) {
+export function checkStringMap(x, checkValue) {
     if (checkValue && isStringMap(x, checkValue)) {
         return x;
     }
@@ -56,8 +28,7 @@ function checkStringMap(x, checkValue) {
     }
     return panic(`Value must be an object, but is ${x}`);
 }
-exports.checkStringMap = checkStringMap;
-function checkArray(x, checkItem) {
+export function checkArray(x, checkItem) {
     if (!Array.isArray(x)) {
         return panic(`Value must be an array, but is ${x}`);
     }
@@ -70,66 +41,55 @@ function checkArray(x, checkItem) {
     }
     return x;
 }
-exports.checkArray = checkArray;
-function defined(x) {
+export function defined(x) {
     if (x !== undefined)
         return x;
     return panic("Defined value expected, but got undefined");
 }
-exports.defined = defined;
-function nonNull(x) {
+export function nonNull(x) {
     if (x !== null)
         return x;
     return panic("Non-null value expected, but got null");
 }
-exports.nonNull = nonNull;
-function assertNever(x) {
-    return (0, Messages_1.messageError)("InternalError", { message: `Unexpected object ${x}` });
+export function assertNever(x) {
+    return messageError("InternalError", { message: `Unexpected object ${x}` });
 }
-exports.assertNever = assertNever;
-function assert(condition, message = "Assertion failed") {
+export function assert(condition, message = "Assertion failed") {
     if (!condition) {
-        return (0, Messages_1.messageError)("InternalError", { message });
+        return messageError("InternalError", { message });
     }
 }
-exports.assert = assert;
-function panic(message) {
-    return (0, Messages_1.messageError)("InternalError", { message });
+export function panic(message) {
+    return messageError("InternalError", { message });
 }
-exports.panic = panic;
-function mustNotHappen() {
+export function mustNotHappen() {
     return panic("This must not happen");
 }
-exports.mustNotHappen = mustNotHappen;
-function repeated(n, value) {
+export function repeated(n, value) {
     const arr = [];
     for (let i = 0; i < n; i++) {
         arr.push(value);
     }
     return arr;
 }
-exports.repeated = repeated;
-function repeatedCall(n, producer) {
+export function repeatedCall(n, producer) {
     const arr = [];
     for (let i = 0; i < n; i++) {
         arr.push(producer());
     }
     return arr;
 }
-exports.repeatedCall = repeatedCall;
-function errorMessage(e) {
+export function errorMessage(e) {
     if (e instanceof Error) {
         return e.message;
     }
     return e.toString();
 }
-exports.errorMessage = errorMessage;
-function inflateBase64(encoded) {
-    const bytes = js_base64_1.Base64.atob(encoded);
+export function inflateBase64(encoded) {
+    const bytes = Base64.atob(encoded);
     return pako.inflate(bytes, { to: "string" });
 }
-exports.inflateBase64 = inflateBase64;
-function parseJSON(text, description, address = "<unknown>") {
+export function parseJSON(text, description, address = "<unknown>") {
     try {
         // https://gist.github.com/pbakondy/f5045eff725193dad9c7
         if (text.charCodeAt(0) === 0xfeff) {
@@ -145,16 +105,14 @@ function parseJSON(text, description, address = "<unknown>") {
         else {
             message = `Unknown exception ${e}`;
         }
-        return (0, Messages_1.messageError)("MiscJSONParseError", { description, address, message });
+        return messageError("MiscJSONParseError", { description, address, message });
     }
 }
-exports.parseJSON = parseJSON;
-function indentationString(level) {
+export function indentationString(level) {
     return "  ".repeat(level);
 }
-exports.indentationString = indentationString;
 // FIXME: fix this enum iteration
-function numberEnumValues(e) {
+export function numberEnumValues(e) {
     const result = [];
     for (const k of Object.keys(e)) {
         const v = e[k];
@@ -164,4 +122,3 @@ function numberEnumValues(e) {
     }
     return result;
 }
-exports.numberEnumValues = numberEnumValues;

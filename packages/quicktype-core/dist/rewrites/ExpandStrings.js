@@ -1,11 +1,8 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.expandStrings = void 0;
-const collection_utils_1 = require("collection-utils");
-const StringTypes_1 = require("../attributes/StringTypes");
-const TypeAttributes_1 = require("../attributes/TypeAttributes");
-const Support_1 = require("../support/Support");
-const TypeUtils_1 = require("../TypeUtils");
+import { areEqual, iterableFirst, iterableReduce, iterableSome, mapFilter, setIntersect, setIsSuperset, setUnion } from "collection-utils";
+import { StringTypes } from "../attributes/StringTypes";
+import { emptyTypeAttributes } from "../attributes/TypeAttributes";
+import { assert, defined } from "../support/Support";
+import { stringTypesForType } from "../TypeUtils";
 const MIN_LENGTH_FOR_ENUM = 10;
 const MIN_LENGTH_FOR_OVERLAP = 5;
 const REQUIRED_OVERLAP = 3 / 4;
@@ -14,29 +11,29 @@ function isOwnEnum({ numValues, cases }) {
 }
 function enumCasesOverlap(newCases, existingCases, newAreSubordinate) {
     const smaller = newAreSubordinate ? newCases.size : Math.min(newCases.size, existingCases.size);
-    const overlap = (0, collection_utils_1.setIntersect)(newCases, existingCases).size;
+    const overlap = setIntersect(newCases, existingCases).size;
     return overlap >= smaller * REQUIRED_OVERLAP;
 }
 function isAlwaysEmptyString(cases) {
     return cases.length === 1 && cases[0] === "";
 }
-function expandStrings(ctx, graph, inference) {
+export function expandStrings(ctx, graph, inference) {
     const stringTypeMapping = ctx.stringTypeMapping;
-    const allStrings = Array.from(graph.allTypesUnordered()).filter(t => t.kind === "string" && (0, TypeUtils_1.stringTypesForType)(t).isRestricted);
+    const allStrings = Array.from(graph.allTypesUnordered()).filter(t => t.kind === "string" && stringTypesForType(t).isRestricted);
     function makeEnumInfo(t) {
-        const stringTypes = (0, TypeUtils_1.stringTypesForType)(t);
+        const stringTypes = stringTypesForType(t);
         const mappedStringTypes = stringTypes.applyStringTypeMapping(stringTypeMapping);
         if (!mappedStringTypes.isRestricted)
             return undefined;
-        const cases = (0, Support_1.defined)(mappedStringTypes.cases);
+        const cases = defined(mappedStringTypes.cases);
         if (cases.size === 0)
             return undefined;
-        const numValues = (0, collection_utils_1.iterableReduce)(cases.values(), 0, (a, b) => a + b);
+        const numValues = iterableReduce(cases.values(), 0, (a, b) => a + b);
         if (inference !== "all") {
             const keys = Array.from(cases.keys());
             if (isAlwaysEmptyString(keys))
                 return undefined;
-            const someCaseIsNotNumber = (0, collection_utils_1.iterableSome)(keys, key => /^[-+]?[0-9]+(\.[0-9]+)?$/.test(key) === false);
+            const someCaseIsNotNumber = iterableSome(keys, key => /^[-+]?[0-9]+(\.[0-9]+)?$/.test(key) === false);
             if (!someCaseIsNotNumber)
                 return undefined;
         }
@@ -59,7 +56,7 @@ function expandStrings(ctx, graph, inference) {
         // First, make case sets for all the enums that stand on their own.  If
         // we find some overlap (searching eagerly), make unions.
         for (const t of Array.from(enumInfos.keys())) {
-            const enumInfo = (0, Support_1.defined)(enumInfos.get(t));
+            const enumInfo = defined(enumInfos.get(t));
             const cases = enumInfo.cases;
             if (inference === "all") {
                 enumSets.push(cases);
@@ -74,7 +71,7 @@ function expandStrings(ctx, graph, inference) {
                     //         Array.from(enumSets[index])
                     //     )}`
                     // );
-                    enumSets[index] = (0, collection_utils_1.setUnion)(enumSets[index], cases);
+                    enumSets[index] = setUnion(enumSets[index], cases);
                 }
                 else {
                     // console.log(`adding new ${JSON.stringify(Array.from(cases))}`);
@@ -85,7 +82,7 @@ function expandStrings(ctx, graph, inference) {
             enumInfos.delete(t);
         }
         if (inference === "all") {
-            (0, Support_1.assert)(enumInfos.size === 0);
+            assert(enumInfos.size === 0);
         }
         // Now see if we can unify the rest with some a set we found in the
         // previous step.
@@ -99,30 +96,30 @@ function expandStrings(ctx, graph, inference) {
                 //         Array.from(enumSets[index])
                 //     )}`
                 // );
-                enumSets[index] = (0, collection_utils_1.setUnion)(enumSets[index], enumInfo.cases);
+                enumSets[index] = setUnion(enumSets[index], enumInfo.cases);
             }
         }
     }
     function replaceString(group, builder, forwardingRef) {
-        (0, Support_1.assert)(group.size === 1);
-        const t = (0, Support_1.defined)((0, collection_utils_1.iterableFirst)(group));
-        const stringTypes = (0, TypeUtils_1.stringTypesForType)(t);
-        const attributes = (0, collection_utils_1.mapFilter)(t.getAttributes(), a => a !== stringTypes);
+        assert(group.size === 1);
+        const t = defined(iterableFirst(group));
+        const stringTypes = stringTypesForType(t);
+        const attributes = mapFilter(t.getAttributes(), a => a !== stringTypes);
         const mappedStringTypes = stringTypes.applyStringTypeMapping(stringTypeMapping);
         if (!mappedStringTypes.isRestricted) {
-            return builder.getStringType(attributes, StringTypes_1.StringTypes.unrestricted, forwardingRef);
+            return builder.getStringType(attributes, StringTypes.unrestricted, forwardingRef);
         }
-        const setMatches = inference === "all" ? collection_utils_1.areEqual : collection_utils_1.setIsSuperset;
+        const setMatches = inference === "all" ? areEqual : setIsSuperset;
         const types = [];
-        const cases = (0, Support_1.defined)(mappedStringTypes.cases);
+        const cases = defined(mappedStringTypes.cases);
         if (cases.size > 0) {
             const keys = new Set(cases.keys());
             const fullCases = enumSets.find(s => setMatches(s, keys));
             if (inference !== "none" && !isAlwaysEmptyString(Array.from(keys)) && fullCases !== undefined) {
-                types.push(builder.getEnumType(TypeAttributes_1.emptyTypeAttributes, fullCases));
+                types.push(builder.getEnumType(emptyTypeAttributes, fullCases));
             }
             else {
-                return builder.getStringType(attributes, StringTypes_1.StringTypes.unrestricted, forwardingRef);
+                return builder.getStringType(attributes, StringTypes.unrestricted, forwardingRef);
             }
         }
         const transformations = mappedStringTypes.transformations;
@@ -133,13 +130,12 @@ function expandStrings(ctx, graph, inference) {
         // both are rewritten via `getPrimitiveType` below without any attributes, they end up
         // being the same string type.
         if (types.length === 0 && transformations.size === 1) {
-            const kind = (0, Support_1.defined)((0, collection_utils_1.iterableFirst)(transformations));
+            const kind = defined(iterableFirst(transformations));
             return builder.getPrimitiveType(kind, attributes, forwardingRef);
         }
         types.push(...Array.from(transformations).map(k => builder.getPrimitiveType(k)));
-        (0, Support_1.assert)(types.length > 0, "We got an empty string type");
+        assert(types.length > 0, "We got an empty string type");
         return builder.getUnionType(attributes, new Set(types), forwardingRef);
     }
     return graph.rewrite("expand strings", stringTypeMapping, false, allStrings.map(t => [t]), ctx.debugPrintReconstitution, replaceString);
 }
-exports.expandStrings = expandStrings;

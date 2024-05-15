@@ -1,23 +1,20 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.FlowRenderer = exports.FlowTargetLanguage = exports.TypeScriptRenderer = exports.TypeScriptFlowBaseRenderer = exports.TypeScriptTargetLanguage = exports.TypeScriptFlowBaseTargetLanguage = exports.tsFlowOptions = void 0;
-const Naming_1 = require("../Naming");
-const RendererOptions_1 = require("../RendererOptions");
-const Source_1 = require("../Source");
-const Strings_1 = require("../support/Strings");
-const Support_1 = require("../support/Support");
-const Type_1 = require("../Type");
-const TypeUtils_1 = require("../TypeUtils");
-const JavaScript_1 = require("./JavaScript");
-const JavaScriptUnicodeMaps_1 = require("./JavaScriptUnicodeMaps");
-exports.tsFlowOptions = Object.assign({}, JavaScript_1.javaScriptOptions, {
-    justTypes: new RendererOptions_1.BooleanOption("just-types", "Interfaces only", false),
-    nicePropertyNames: new RendererOptions_1.BooleanOption("nice-property-names", "Transform property names to be JavaScripty", false),
-    declareUnions: new RendererOptions_1.BooleanOption("explicit-unions", "Explicitly name unions", false),
-    preferUnions: new RendererOptions_1.BooleanOption("prefer-unions", "Use union type instead of enum", false),
-    preferTypes: new RendererOptions_1.BooleanOption("prefer-types", "Use types instead of interfaces", false),
-    preferConstValues: new RendererOptions_1.BooleanOption("prefer-const-values", "Use string instead of enum for string enums with single value", false),
-    readonly: new RendererOptions_1.BooleanOption("readonly", "Use readonly type members", false)
+import { funPrefixNamer } from "../Naming";
+import { BooleanOption, getOptionValues } from "../RendererOptions";
+import { modifySource, multiWord, parenIfNeeded, singleWord } from "../Source";
+import { camelCase, utf16StringEscape } from "../support/Strings";
+import { defined, panic } from "../support/Support";
+import { ArrayType, EnumType, UnionType } from "../Type";
+import { isNamedType, matchType, nullableFromUnion } from "../TypeUtils";
+import { JavaScriptRenderer, JavaScriptTargetLanguage, javaScriptOptions, legalizeName } from "./JavaScript";
+import { isES3IdentifierStart } from "./JavaScriptUnicodeMaps";
+export const tsFlowOptions = Object.assign({}, javaScriptOptions, {
+    justTypes: new BooleanOption("just-types", "Interfaces only", false),
+    nicePropertyNames: new BooleanOption("nice-property-names", "Transform property names to be JavaScripty", false),
+    declareUnions: new BooleanOption("explicit-unions", "Explicitly name unions", false),
+    preferUnions: new BooleanOption("prefer-unions", "Use union type instead of enum", false),
+    preferTypes: new BooleanOption("prefer-types", "Use types instead of interfaces", false),
+    preferConstValues: new BooleanOption("prefer-const-values", "Use string instead of enum for string enums with single value", false),
+    readonly: new BooleanOption("readonly", "Use readonly type members", false)
 });
 const tsFlowTypeAnnotations = {
     any: ": any",
@@ -27,108 +24,106 @@ const tsFlowTypeAnnotations = {
     stringArray: ": string[]",
     boolean: ": boolean"
 };
-class TypeScriptFlowBaseTargetLanguage extends JavaScript_1.JavaScriptTargetLanguage {
+export class TypeScriptFlowBaseTargetLanguage extends JavaScriptTargetLanguage {
     getOptions() {
         return [
-            exports.tsFlowOptions.justTypes,
-            exports.tsFlowOptions.nicePropertyNames,
-            exports.tsFlowOptions.declareUnions,
-            exports.tsFlowOptions.runtimeTypecheck,
-            exports.tsFlowOptions.runtimeTypecheckIgnoreUnknownProperties,
-            exports.tsFlowOptions.acronymStyle,
-            exports.tsFlowOptions.converters,
-            exports.tsFlowOptions.rawType,
-            exports.tsFlowOptions.preferUnions,
-            exports.tsFlowOptions.preferTypes,
-            exports.tsFlowOptions.preferConstValues,
-            exports.tsFlowOptions.readonly
+            tsFlowOptions.justTypes,
+            tsFlowOptions.nicePropertyNames,
+            tsFlowOptions.declareUnions,
+            tsFlowOptions.runtimeTypecheck,
+            tsFlowOptions.runtimeTypecheckIgnoreUnknownProperties,
+            tsFlowOptions.acronymStyle,
+            tsFlowOptions.converters,
+            tsFlowOptions.rawType,
+            tsFlowOptions.preferUnions,
+            tsFlowOptions.preferTypes,
+            tsFlowOptions.preferConstValues,
+            tsFlowOptions.readonly
         ];
     }
     get supportsOptionalClassProperties() {
         return true;
     }
 }
-exports.TypeScriptFlowBaseTargetLanguage = TypeScriptFlowBaseTargetLanguage;
-class TypeScriptTargetLanguage extends TypeScriptFlowBaseTargetLanguage {
+export class TypeScriptTargetLanguage extends TypeScriptFlowBaseTargetLanguage {
     constructor() {
         super("TypeScript", ["typescript", "ts", "tsx"], "ts");
     }
     makeRenderer(renderContext, untypedOptionValues) {
-        return new TypeScriptRenderer(this, renderContext, (0, RendererOptions_1.getOptionValues)(exports.tsFlowOptions, untypedOptionValues));
+        return new TypeScriptRenderer(this, renderContext, getOptionValues(tsFlowOptions, untypedOptionValues));
     }
 }
-exports.TypeScriptTargetLanguage = TypeScriptTargetLanguage;
 function quotePropertyName(original) {
-    const escaped = (0, Strings_1.utf16StringEscape)(original);
+    const escaped = utf16StringEscape(original);
     const quoted = `"${escaped}"`;
     if (original.length === 0) {
         return quoted;
     }
-    else if (!(0, JavaScriptUnicodeMaps_1.isES3IdentifierStart)(original.codePointAt(0))) {
+    else if (!isES3IdentifierStart(original.codePointAt(0))) {
         return quoted;
     }
     else if (escaped !== original) {
         return quoted;
     }
-    else if ((0, JavaScript_1.legalizeName)(original) !== original) {
+    else if (legalizeName(original) !== original) {
         return quoted;
     }
     else {
         return original;
     }
 }
-class TypeScriptFlowBaseRenderer extends JavaScript_1.JavaScriptRenderer {
+export class TypeScriptFlowBaseRenderer extends JavaScriptRenderer {
     constructor(targetLanguage, renderContext, _tsFlowOptions) {
         super(targetLanguage, renderContext, _tsFlowOptions);
         this._tsFlowOptions = _tsFlowOptions;
     }
     namerForObjectProperty() {
         if (this._tsFlowOptions.nicePropertyNames) {
-            return (0, Naming_1.funPrefixNamer)("properties", s => this.nameStyle(s, false));
+            return funPrefixNamer("properties", s => this.nameStyle(s, false));
         }
         else {
             return super.namerForObjectProperty();
         }
     }
     sourceFor(t) {
-        if (this._tsFlowOptions.preferConstValues && t.kind === "enum" && t instanceof Type_1.EnumType && t.cases.size === 1) {
+        if (this._tsFlowOptions.preferConstValues && t.kind === "enum" && t instanceof EnumType && t.cases.size === 1) {
             const item = t.cases.values().next().value;
-            return (0, Source_1.singleWord)(`"${(0, Strings_1.utf16StringEscape)(item)}"`);
+            return singleWord(`"${utf16StringEscape(item)}"`);
         }
         if (["class", "object", "enum"].includes(t.kind)) {
-            return (0, Source_1.singleWord)(this.nameForNamedType(t));
+            return singleWord(this.nameForNamedType(t));
         }
-        return (0, TypeUtils_1.matchType)(t, _anyType => (0, Source_1.singleWord)("any"), _nullType => (0, Source_1.singleWord)("null"), _boolType => (0, Source_1.singleWord)("boolean"), _integerType => (0, Source_1.singleWord)("number"), _doubleType => (0, Source_1.singleWord)("number"), _stringType => (0, Source_1.singleWord)("string"), arrayType => {
+        return matchType(t, _anyType => singleWord("any"), _nullType => singleWord("null"), _boolType => singleWord("boolean"), _integerType => singleWord("number"), _doubleType => singleWord("number"), _stringType => singleWord("string"), arrayType => {
             const itemType = this.sourceFor(arrayType.items);
-            if ((arrayType.items instanceof Type_1.UnionType && !this._tsFlowOptions.declareUnions) ||
-                arrayType.items instanceof Type_1.ArrayType) {
-                return (0, Source_1.singleWord)(["Array<", itemType.source, ">"]);
+            if ((arrayType.items instanceof UnionType && !this._tsFlowOptions.declareUnions) ||
+                arrayType.items instanceof ArrayType) {
+                return singleWord(["Array<", itemType.source, ">"]);
             }
             else {
-                return (0, Source_1.singleWord)([(0, Source_1.parenIfNeeded)(itemType), "[]"]);
+                return singleWord([parenIfNeeded(itemType), "[]"]);
             }
-        }, _classType => (0, Support_1.panic)("We handled this above"), mapType => (0, Source_1.singleWord)(["{ [key: string]: ", this.sourceFor(mapType.values).source, " }"]), _enumType => (0, Support_1.panic)("We handled this above"), unionType => {
-            if (!this._tsFlowOptions.declareUnions || (0, TypeUtils_1.nullableFromUnion)(unionType) !== null) {
-                const children = Array.from(unionType.getChildren()).map(c => (0, Source_1.parenIfNeeded)(this.sourceFor(c)));
-                return (0, Source_1.multiWord)(" | ", ...children);
+        }, _classType => panic("We handled this above"), mapType => singleWord(["{ [key: string]: ", this.sourceFor(mapType.values).source, " }"]), _enumType => panic("We handled this above"), unionType => {
+            if (!this._tsFlowOptions.declareUnions || nullableFromUnion(unionType) !== null) {
+                const children = Array.from(unionType.getChildren()).map(c => parenIfNeeded(this.sourceFor(c)));
+                return multiWord(" | ", ...children);
             }
             else {
-                return (0, Source_1.singleWord)(this.nameForNamedType(unionType));
+                return singleWord(this.nameForNamedType(unionType));
             }
         }, transformedStringType => {
             if (transformedStringType.kind === "date-time") {
-                return (0, Source_1.singleWord)("Date");
+                return singleWord("Date");
             }
-            return (0, Source_1.singleWord)("string");
+            return singleWord("string");
         });
     }
     emitClassBlockBody(c) {
         this.emitPropertyTable(c, (name, _jsonName, p) => {
             const t = p.type;
             let propertyName = name;
-            propertyName = (0, Source_1.modifySource)(quotePropertyName, name);
+            propertyName = modifySource(quotePropertyName, name);
             if (this._tsFlowOptions.readonly) {
-                propertyName = (0, Source_1.modifySource)(_propertyName => "readonly " + _propertyName, propertyName);
+                propertyName = modifySource(_propertyName => "readonly " + _propertyName, propertyName);
             }
             return [
                 [propertyName, p.isOptional ? "?" : "", ": "],
@@ -149,7 +144,7 @@ class TypeScriptFlowBaseRenderer extends JavaScript_1.JavaScriptRenderer {
             return;
         }
         this.emitDescription(this.descriptionForType(u));
-        const children = (0, Source_1.multiWord)(" | ", ...Array.from(u.getChildren()).map(c => (0, Source_1.parenIfNeeded)(this.sourceFor(c))));
+        const children = multiWord(" | ", ...Array.from(u.getChildren()).map(c => parenIfNeeded(this.sourceFor(c))));
         this.emitLine("export type ", unionName, " = ", children.source, ";");
     }
     emitTypes() {
@@ -174,7 +169,7 @@ class TypeScriptFlowBaseRenderer extends JavaScript_1.JavaScriptRenderer {
         return ["function to", name, "(json: ", jsonType, "): ", this.sourceFor(t).source];
     }
     serializerFunctionLine(t, name) {
-        const camelCaseName = (0, Source_1.modifySource)(Strings_1.camelCase, name);
+        const camelCaseName = modifySource(camelCase, name);
         const returnType = this._tsFlowOptions.rawType === "json" ? "string" : "any";
         return ["function ", camelCaseName, "ToJson(value: ", this.sourceFor(t).source, "): ", returnType];
     }
@@ -206,8 +201,7 @@ class TypeScriptFlowBaseRenderer extends JavaScript_1.JavaScriptRenderer {
         }
     }
 }
-exports.TypeScriptFlowBaseRenderer = TypeScriptFlowBaseRenderer;
-class TypeScriptRenderer extends TypeScriptFlowBaseRenderer {
+export class TypeScriptRenderer extends TypeScriptFlowBaseRenderer {
     forbiddenNamesForGlobalNamespace() {
         return ["Array", "Date"];
     }
@@ -216,7 +210,7 @@ class TypeScriptRenderer extends TypeScriptFlowBaseRenderer {
         return ["public static to", name, "(json: ", jsonType, "): ", this.sourceFor(t).source];
     }
     serializerFunctionLine(t, name) {
-        const camelCaseName = (0, Source_1.modifySource)(Strings_1.camelCase, name);
+        const camelCaseName = modifySource(camelCase, name);
         const returnType = this._tsFlowOptions.rawType === "json" ? "string" : "any";
         return ["public static ", camelCaseName, "ToJson(value: ", this.sourceFor(t).source, "): ", returnType];
     }
@@ -233,7 +227,7 @@ class TypeScriptRenderer extends TypeScriptFlowBaseRenderer {
         const topLevelNames = [];
         this.forEachTopLevel("none", (_t, name) => {
             topLevelNames.push(", ", name);
-        }, TypeUtils_1.isNamedType);
+        }, isNamedType);
         this.emitLine("//   import { Convert", topLevelNames, ' } from "./file";');
     }
     emitEnum(e, enumName) {
@@ -245,17 +239,17 @@ class TypeScriptRenderer extends TypeScriptFlowBaseRenderer {
             let items = "";
             e.cases.forEach(item => {
                 if (items === "") {
-                    items += `"${(0, Strings_1.utf16StringEscape)(item)}"`;
+                    items += `"${utf16StringEscape(item)}"`;
                     return;
                 }
-                items += ` | "${(0, Strings_1.utf16StringEscape)(item)}"`;
+                items += ` | "${utf16StringEscape(item)}"`;
             });
             this.emitLine("export type ", enumName, " = ", items, ";");
         }
         else {
             this.emitBlock(["export enum ", enumName, " "], "", () => {
                 this.forEachEnumCase(e, "none", (name, jsonName) => {
-                    this.emitLine(name, ` = "${(0, Strings_1.utf16StringEscape)(jsonName)}",`);
+                    this.emitLine(name, ` = "${utf16StringEscape(jsonName)}",`);
                 });
             });
         }
@@ -271,17 +265,15 @@ class TypeScriptRenderer extends TypeScriptFlowBaseRenderer {
         super.emitSourceStructure();
     }
 }
-exports.TypeScriptRenderer = TypeScriptRenderer;
-class FlowTargetLanguage extends TypeScriptFlowBaseTargetLanguage {
+export class FlowTargetLanguage extends TypeScriptFlowBaseTargetLanguage {
     constructor() {
         super("Flow", ["flow"], "js");
     }
     makeRenderer(renderContext, untypedOptionValues) {
-        return new FlowRenderer(this, renderContext, (0, RendererOptions_1.getOptionValues)(exports.tsFlowOptions, untypedOptionValues));
+        return new FlowRenderer(this, renderContext, getOptionValues(tsFlowOptions, untypedOptionValues));
     }
 }
-exports.FlowTargetLanguage = FlowTargetLanguage;
-class FlowRenderer extends TypeScriptFlowBaseRenderer {
+export class FlowRenderer extends TypeScriptFlowBaseRenderer {
     forbiddenNamesForGlobalNamespace() {
         return ["Class", "Date", "Object", "String", "Array", "JSON", "Error"];
     }
@@ -293,9 +285,9 @@ class FlowRenderer extends TypeScriptFlowBaseRenderer {
         const lines = [];
         this.forEachEnumCase(e, "none", (_, jsonName) => {
             const maybeOr = lines.length === 0 ? "  " : "| ";
-            lines.push([maybeOr, '"', (0, Strings_1.utf16StringEscape)(jsonName), '"']);
+            lines.push([maybeOr, '"', utf16StringEscape(jsonName), '"']);
         });
-        (0, Support_1.defined)(lines[lines.length - 1]).push(";");
+        defined(lines[lines.length - 1]).push(";");
         this.emitLine("export type ", enumName, " =");
         this.indent(() => {
             for (const line of lines) {
@@ -314,4 +306,3 @@ class FlowRenderer extends TypeScriptFlowBaseRenderer {
         super.emitSourceStructure();
     }
 }
-exports.FlowRenderer = FlowRenderer;

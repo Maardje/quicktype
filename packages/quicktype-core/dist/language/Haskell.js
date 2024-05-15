@@ -1,28 +1,25 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.HaskellRenderer = exports.HaskellTargetLanguage = exports.haskellOptions = void 0;
-const collection_utils_1 = require("collection-utils");
-const ConvenienceRenderer_1 = require("../ConvenienceRenderer");
-const Naming_1 = require("../Naming");
-const RendererOptions_1 = require("../RendererOptions");
-const Source_1 = require("../Source");
-const Strings_1 = require("../support/Strings");
-const TargetLanguage_1 = require("../TargetLanguage");
-const TypeUtils_1 = require("../TypeUtils");
-exports.haskellOptions = {
-    justTypes: new RendererOptions_1.BooleanOption("just-types", "Plain types only", false),
-    useList: new RendererOptions_1.EnumOption("array-type", "Use Array or List", [
+import { mapContains } from "collection-utils";
+import { ConvenienceRenderer } from "../ConvenienceRenderer";
+import { funPrefixNamer } from "../Naming";
+import { BooleanOption, EnumOption, StringOption, getOptionValues } from "../RendererOptions";
+import { multiWord, parenIfNeeded, singleWord } from "../Source";
+import { allLowerWordStyle, allUpperWordStyle, combineWords, firstUpperWordStyle, isAscii, isLetterOrUnderscore, isLetterOrUnderscoreOrDigit, legalizeCharacters, splitIntoWords, stringEscape } from "../support/Strings";
+import { TargetLanguage } from "../TargetLanguage";
+import { matchType, nullableFromUnion } from "../TypeUtils";
+export const haskellOptions = {
+    justTypes: new BooleanOption("just-types", "Plain types only", false),
+    useList: new EnumOption("array-type", "Use Array or List", [
         ["array", false],
         ["list", true]
     ]),
-    moduleName: new RendererOptions_1.StringOption("module", "Generated module name", "NAME", "QuickType")
+    moduleName: new StringOption("module", "Generated module name", "NAME", "QuickType")
 };
-class HaskellTargetLanguage extends TargetLanguage_1.TargetLanguage {
+export class HaskellTargetLanguage extends TargetLanguage {
     constructor() {
         super("Haskell", ["haskell"], "haskell");
     }
     getOptions() {
-        return [exports.haskellOptions.justTypes, exports.haskellOptions.moduleName, exports.haskellOptions.useList];
+        return [haskellOptions.justTypes, haskellOptions.moduleName, haskellOptions.useList];
     }
     get supportsOptionalClassProperties() {
         return true;
@@ -31,10 +28,9 @@ class HaskellTargetLanguage extends TargetLanguage_1.TargetLanguage {
         return true;
     }
     makeRenderer(renderContext, untypedOptionValues) {
-        return new HaskellRenderer(this, renderContext, (0, RendererOptions_1.getOptionValues)(exports.haskellOptions, untypedOptionValues));
+        return new HaskellRenderer(this, renderContext, getOptionValues(haskellOptions, untypedOptionValues));
     }
 }
-exports.HaskellTargetLanguage = HaskellTargetLanguage;
 const forbiddenNames = [
     // reserved keywords
     "as",
@@ -89,14 +85,14 @@ const forbiddenNames = [
     "Series",
     "Error"
 ];
-const legalizeName = (0, Strings_1.legalizeCharacters)(cp => (0, Strings_1.isAscii)(cp) && (0, Strings_1.isLetterOrUnderscoreOrDigit)(cp));
+const legalizeName = legalizeCharacters(cp => isAscii(cp) && isLetterOrUnderscoreOrDigit(cp));
 function haskellNameStyle(original, upper) {
-    const words = (0, Strings_1.splitIntoWords)(original);
-    return (0, Strings_1.combineWords)(words, legalizeName, upper ? Strings_1.firstUpperWordStyle : Strings_1.allLowerWordStyle, Strings_1.firstUpperWordStyle, upper ? Strings_1.allUpperWordStyle : Strings_1.allLowerWordStyle, Strings_1.allUpperWordStyle, "", Strings_1.isLetterOrUnderscore);
+    const words = splitIntoWords(original);
+    return combineWords(words, legalizeName, upper ? firstUpperWordStyle : allLowerWordStyle, firstUpperWordStyle, upper ? allUpperWordStyle : allLowerWordStyle, allUpperWordStyle, "", isLetterOrUnderscore);
 }
-const upperNamingFunction = (0, Naming_1.funPrefixNamer)("upper", n => haskellNameStyle(n, true));
-const lowerNamingFunction = (0, Naming_1.funPrefixNamer)("lower", n => haskellNameStyle(n, false));
-class HaskellRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
+const upperNamingFunction = funPrefixNamer("upper", n => haskellNameStyle(n, true));
+const lowerNamingFunction = funPrefixNamer("lower", n => haskellNameStyle(n, false));
+export class HaskellRenderer extends ConvenienceRenderer {
     constructor(targetLanguage, renderContext, _options) {
         super(targetLanguage, renderContext);
         this._options = _options;
@@ -145,32 +141,32 @@ class HaskellRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         }
     }
     haskellType(t, noOptional = false) {
-        return (0, TypeUtils_1.matchType)(t, _anyType => (0, Source_1.multiWord)(" ", "Maybe", "Text"), _nullType => (0, Source_1.multiWord)(" ", "Maybe", "Text"), _boolType => (0, Source_1.singleWord)("Bool"), _integerType => (0, Source_1.singleWord)("Int"), _doubleType => (0, Source_1.singleWord)("Float"), _stringType => (0, Source_1.singleWord)("Text"), arrayType => {
+        return matchType(t, _anyType => multiWord(" ", "Maybe", "Text"), _nullType => multiWord(" ", "Maybe", "Text"), _boolType => singleWord("Bool"), _integerType => singleWord("Int"), _doubleType => singleWord("Float"), _stringType => singleWord("Text"), arrayType => {
             if (this._options.useList) {
-                return (0, Source_1.multiWord)("", "[", (0, Source_1.parenIfNeeded)(this.haskellType(arrayType.items)), "]");
+                return multiWord("", "[", parenIfNeeded(this.haskellType(arrayType.items)), "]");
             }
-            return (0, Source_1.multiWord)(" ", "Vector", (0, Source_1.parenIfNeeded)(this.haskellType(arrayType.items)));
-        }, classType => (0, Source_1.singleWord)(this.nameForNamedType(classType)), mapType => (0, Source_1.multiWord)(" ", "HashMap Text", (0, Source_1.parenIfNeeded)(this.haskellType(mapType.values))), enumType => (0, Source_1.singleWord)(this.nameForNamedType(enumType)), unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+            return multiWord(" ", "Vector", parenIfNeeded(this.haskellType(arrayType.items)));
+        }, classType => singleWord(this.nameForNamedType(classType)), mapType => multiWord(" ", "HashMap Text", parenIfNeeded(this.haskellType(mapType.values))), enumType => singleWord(this.nameForNamedType(enumType)), unionType => {
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null) {
                 const nullableType = this.haskellType(nullable);
                 if (noOptional)
                     return nullableType;
-                return (0, Source_1.multiWord)(" ", "Maybe", (0, Source_1.parenIfNeeded)(nullableType));
+                return multiWord(" ", "Maybe", parenIfNeeded(nullableType));
             }
-            return (0, Source_1.singleWord)(this.nameForNamedType(unionType));
+            return singleWord(this.nameForNamedType(unionType));
         });
     }
     haskellProperty(p) {
         if (p.isOptional) {
-            return (0, Source_1.multiWord)(" ", "Maybe", (0, Source_1.parenIfNeeded)(this.haskellType(p.type, true))).source;
+            return multiWord(" ", "Maybe", parenIfNeeded(this.haskellType(p.type, true))).source;
         }
         else {
             return this.haskellType(p.type).source;
         }
     }
     encoderNameForType(t) {
-        return (0, TypeUtils_1.matchType)(t, _anyType => (0, Source_1.singleWord)("String"), _nullType => (0, Source_1.singleWord)("Null"), _boolType => (0, Source_1.singleWord)("Bool"), _integerType => (0, Source_1.singleWord)("Number"), _doubleType => (0, Source_1.singleWord)("Number"), _stringType => (0, Source_1.singleWord)("String"), _arrayType => (0, Source_1.singleWord)("Array"), _classType => (0, Source_1.singleWord)("Object"), _mapType => (0, Source_1.singleWord)("Object"), _enumType => (0, Source_1.singleWord)("Object"), _unionType => (0, Source_1.singleWord)("Object"));
+        return matchType(t, _anyType => singleWord("String"), _nullType => singleWord("Null"), _boolType => singleWord("Bool"), _integerType => singleWord("Number"), _doubleType => singleWord("Number"), _stringType => singleWord("String"), _arrayType => singleWord("Array"), _classType => singleWord("Object"), _mapType => singleWord("Object"), _enumType => singleWord("Object"), _unionType => singleWord("Object"));
     }
     emitTopLevelDefinition(t, topLevelName) {
         this.emitLine("type ", topLevelName, " = ", this.haskellType(t).source);
@@ -228,7 +224,7 @@ class HaskellRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                     this.emitLine(equalsOrPipe, " ", constructor);
                 }
                 else {
-                    this.emitLine(equalsOrPipe, " ", constructor, " ", (0, Source_1.parenIfNeeded)(this.haskellType(t)));
+                    this.emitLine(equalsOrPipe, " ", constructor, " ", parenIfNeeded(this.haskellType(t)));
                 }
                 onFirst = false;
             });
@@ -264,7 +260,7 @@ class HaskellRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                     this.emitLine("object");
                     let onFirst = true;
                     this.forEachClassProperty(c, "none", (name, jsonName) => {
-                        this.emitLine(onFirst ? "[ " : ", ", '"', (0, Strings_1.stringEscape)(jsonName), '" .= ', name, className);
+                        this.emitLine(onFirst ? "[ " : ", ", '"', stringEscape(jsonName), '" .= ', name, className);
                         onFirst = false;
                     });
                     if (onFirst) {
@@ -287,7 +283,7 @@ class HaskellRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                     let onFirst = true;
                     this.forEachClassProperty(c, "none", (_, jsonName, p) => {
                         const operator = p.isOptional ? ".:?" : ".:";
-                        this.emitLine(onFirst ? "<$> " : "<*> ", "v ", operator, ' "', (0, Strings_1.stringEscape)(jsonName), '"');
+                        this.emitLine(onFirst ? "<$> " : "<*> ", "v ", operator, ' "', stringEscape(jsonName), '"');
                         onFirst = false;
                     });
                 });
@@ -303,7 +299,7 @@ class HaskellRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         this.emitLine("instance ToJSON ", enumName, " where");
         this.indent(() => {
             this.forEachEnumCase(e, "none", (name, jsonName) => {
-                this.emitLine("toJSON ", name, enumName, ' = "', (0, Strings_1.stringEscape)(jsonName), '"');
+                this.emitLine("toJSON ", name, enumName, ' = "', stringEscape(jsonName), '"');
             });
         });
     }
@@ -315,7 +311,7 @@ class HaskellRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 this.emitLine("where");
                 this.indent(() => {
                     this.forEachEnumCase(e, "none", (name, jsonName) => {
-                        this.emitLine('parseText "', (0, Strings_1.stringEscape)(jsonName), '" = return ', name, enumName);
+                        this.emitLine('parseText "', stringEscape(jsonName), '" = return ', name, enumName);
                     });
                 });
             });
@@ -366,15 +362,15 @@ class HaskellRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             exports.push([name, " (..)"]);
         });
         this.forEachObject("none", (t, name) => {
-            if (!(0, collection_utils_1.mapContains)(this.topLevels, t))
+            if (!mapContains(this.topLevels, t))
                 exports.push([name, " (..)"]);
         });
         this.forEachEnum("none", (t, name) => {
-            if (!(0, collection_utils_1.mapContains)(this.topLevels, t))
+            if (!mapContains(this.topLevels, t))
                 exports.push([name, " (..)"]);
         });
         this.forEachUnion("none", (t, name) => {
-            if (!(0, collection_utils_1.mapContains)(this.topLevels, t))
+            if (!mapContains(this.topLevels, t))
                 exports.push([name, " (..)"]);
         });
         this.emitLanguageExtensions("StrictData");
@@ -411,4 +407,3 @@ import Data.Text (Text)`);
         this.ensureBlankLine();
     }
 }
-exports.HaskellRenderer = HaskellRenderer;

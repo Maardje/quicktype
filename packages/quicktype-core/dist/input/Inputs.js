@@ -1,4 +1,3 @@
-"use strict";
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -8,25 +7,23 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.InputData = exports.jsonInputForTargetLanguage = exports.JSONInput = void 0;
-const collection_utils_1 = require("collection-utils");
-const Description_1 = require("../attributes/Description");
-const TypeNames_1 = require("../attributes/TypeNames");
+import { arrayMapSync, iterableFind, iterableFirst, iterableSome, setFilterMap, withDefault } from "collection-utils";
+import { descriptionTypeAttributeKind } from "../attributes/Description";
+import { makeNamesTypeAttributes } from "../attributes/TypeNames";
 // eslint-disable-next-line import/no-cycle
-const All_1 = require("../language/All");
-const Messages_1 = require("../Messages");
-const Support_1 = require("../support/Support");
-const CompressedJSON_1 = require("./CompressedJSON");
-const Inference_1 = require("./Inference");
+import { languageNamed } from "../language/All";
+import { messageError } from "../Messages";
+import { defined, errorMessage, panic } from "../support/Support";
+import { CompressedJSONFromString } from "./CompressedJSON";
+import { TypeInference } from "./Inference";
 function messageParseError(name, description, e) {
-    return (0, Messages_1.messageError)("MiscJSONParseError", {
-        description: (0, collection_utils_1.withDefault)(description, "input"),
+    return messageError("MiscJSONParseError", {
+        description: withDefault(description, "input"),
         address: name,
-        message: (0, Support_1.errorMessage)(e)
+        message: errorMessage(e)
     });
 }
-class JSONInput {
+export class JSONInput {
     constructor(_compressedJSON) {
         this._compressedJSON = _compressedJSON;
         this.kind = "json";
@@ -45,7 +42,7 @@ class JSONInput {
     setDescription(topLevelName, description) {
         let topLevel = this._topLevels.get(topLevelName);
         if (topLevel === undefined) {
-            return (0, Support_1.panic)("Trying to set description for a top-level that doesn't exist");
+            return panic("Trying to set description for a top-level that doesn't exist");
         }
         topLevel.description = description;
     }
@@ -61,7 +58,7 @@ class JSONInput {
         return __awaiter(this, void 0, void 0, function* () {
             const { name, samples, description } = source;
             try {
-                const values = yield (0, collection_utils_1.arrayMapSync)(samples, (s) => __awaiter(this, void 0, void 0, function* () { return yield this._compressedJSON.parse(s); }));
+                const values = yield arrayMapSync(samples, (s) => __awaiter(this, void 0, void 0, function* () { return yield this._compressedJSON.parse(s); }));
                 this.addSamples(name, values, description);
             }
             catch (e) {
@@ -88,27 +85,25 @@ class JSONInput {
         });
     }
     addTypesSync(_ctx, typeBuilder, inferMaps, inferEnums, fixedTopLevels) {
-        const inference = new Inference_1.TypeInference(this._compressedJSON, typeBuilder, inferMaps, inferEnums);
+        const inference = new TypeInference(this._compressedJSON, typeBuilder, inferMaps, inferEnums);
         for (const [name, { samples, description }] of this._topLevels) {
-            const tref = inference.inferTopLevelType((0, TypeNames_1.makeNamesTypeAttributes)(name, false), samples, fixedTopLevels);
+            const tref = inference.inferTopLevelType(makeNamesTypeAttributes(name, false), samples, fixedTopLevels);
             typeBuilder.addTopLevel(name, tref);
             if (description !== undefined) {
-                const attributes = Description_1.descriptionTypeAttributeKind.makeAttributes(new Set([description]));
+                const attributes = descriptionTypeAttributeKind.makeAttributes(new Set([description]));
                 typeBuilder.addAttributes(tref, attributes);
             }
         }
     }
 }
-exports.JSONInput = JSONInput;
-function jsonInputForTargetLanguage(targetLanguage, languages, handleJSONRefs = false) {
+export function jsonInputForTargetLanguage(targetLanguage, languages, handleJSONRefs = false) {
     if (typeof targetLanguage === "string") {
-        targetLanguage = (0, Support_1.defined)((0, All_1.languageNamed)(targetLanguage, languages));
+        targetLanguage = defined(languageNamed(targetLanguage, languages));
     }
-    const compressedJSON = new CompressedJSON_1.CompressedJSONFromString(targetLanguage.dateTimeRecognizer, handleJSONRefs);
+    const compressedJSON = new CompressedJSONFromString(targetLanguage.dateTimeRecognizer, handleJSONRefs);
     return new JSONInput(compressedJSON);
 }
-exports.jsonInputForTargetLanguage = jsonInputForTargetLanguage;
-class InputData {
+export class InputData {
     constructor() {
         // FIXME: Make into a Map, indexed by kind.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -118,7 +113,7 @@ class InputData {
         this._inputs = this._inputs.add(input);
     }
     getOrAddInput(kind, makeInput) {
-        let input = (0, collection_utils_1.iterableFind)(this._inputs, i => i.kind === kind);
+        let input = iterableFind(this._inputs, i => i.kind === kind);
         if (input === undefined) {
             input = makeInput();
             this.addInput(input);
@@ -148,17 +143,16 @@ class InputData {
         }
     }
     get needIR() {
-        return (0, collection_utils_1.iterableSome)(this._inputs, i => i.needIR);
+        return iterableSome(this._inputs, i => i.needIR);
     }
     get needSchemaProcessing() {
-        return (0, collection_utils_1.iterableSome)(this._inputs, i => i.needSchemaProcessing);
+        return iterableSome(this._inputs, i => i.needSchemaProcessing);
     }
     singleStringSchemaSource() {
-        const schemaStrings = (0, collection_utils_1.setFilterMap)(this._inputs, i => i.singleStringSchemaSource());
+        const schemaStrings = setFilterMap(this._inputs, i => i.singleStringSchemaSource());
         if (schemaStrings.size > 1) {
-            return (0, Support_1.panic)("We have more than one input with a string schema source");
+            return panic("We have more than one input with a string schema source");
         }
-        return (0, collection_utils_1.iterableFirst)(schemaStrings);
+        return iterableFirst(schemaStrings);
     }
 }
-exports.InputData = InputData;

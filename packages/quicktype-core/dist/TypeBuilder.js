@@ -1,17 +1,14 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.TypeBuilder = exports.getNoStringTypeMapping = exports.stringTypeMappingGet = exports.provenanceTypeAttributeKind = void 0;
-const collection_utils_1 = require("collection-utils");
+import { EqualityMap, areEqual, definedMap, iterableEvery, mapFilter, mapFind, mapMap, mapSortByKey, setUnionManyInto, withDefault } from "collection-utils";
 // eslint-disable-next-line import/no-cycle
-const StringTypes_1 = require("./attributes/StringTypes");
-const TypeAttributes_1 = require("./attributes/TypeAttributes");
-const Support_1 = require("./support/Support");
+import { StringTypes, stringTypesTypeAttributeKind } from "./attributes/StringTypes";
+import { TypeAttributeKind, combineTypeAttributes, emptyTypeAttributes } from "./attributes/TypeAttributes";
+import { assert, defined, panic } from "./support/Support";
 // eslint-disable-next-line import/no-cycle
-const Type_1 = require("./Type");
-const TypeGraph_1 = require("./TypeGraph");
+import { ArrayType, ClassProperty, ClassType, EnumType, IntersectionType, MapType, ObjectType, PrimitiveType, UnionType, arrayTypeIdentity, classTypeIdentity, enumTypeIdentity, intersectionTypeIdentity, isPrimitiveStringTypeKind, mapTypeIdentify, primitiveTypeIdentity, transformedStringTypeKinds, unionTypeIdentity } from "./Type";
+import { TypeGraph, assertTypeRefGraph, derefTypeRef, makeTypeRef, typeRefIndex } from "./TypeGraph";
 // FIXME: Don't infer provenance.  All original types should be present in
 // non-inferred form in the final graph.
-class ProvenanceTypeAttributeKind extends TypeAttributes_1.TypeAttributeKind {
+class ProvenanceTypeAttributeKind extends TypeAttributeKind {
     constructor() {
         super("provenance");
     }
@@ -19,7 +16,7 @@ class ProvenanceTypeAttributeKind extends TypeAttributes_1.TypeAttributeKind {
         return true;
     }
     combine(arr) {
-        return (0, collection_utils_1.setUnionManyInto)(new Set(), arr);
+        return setUnionManyInto(new Set(), arr);
     }
     makeInferred(p) {
         return p;
@@ -31,23 +28,21 @@ class ProvenanceTypeAttributeKind extends TypeAttributes_1.TypeAttributeKind {
             .join(",");
     }
 }
-exports.provenanceTypeAttributeKind = new ProvenanceTypeAttributeKind();
-function stringTypeMappingGet(stm, kind) {
+export const provenanceTypeAttributeKind = new ProvenanceTypeAttributeKind();
+export function stringTypeMappingGet(stm, kind) {
     const mapped = stm.get(kind);
     if (mapped === undefined)
         return "string";
     return mapped;
 }
-exports.stringTypeMappingGet = stringTypeMappingGet;
 let noStringTypeMapping;
-function getNoStringTypeMapping() {
+export function getNoStringTypeMapping() {
     if (noStringTypeMapping === undefined) {
-        noStringTypeMapping = new Map(Array.from(Type_1.transformedStringTypeKinds).map(k => [k, k]));
+        noStringTypeMapping = new Map(Array.from(transformedStringTypeKinds).map(k => [k, k]));
     }
     return noStringTypeMapping;
 }
-exports.getNoStringTypeMapping = getNoStringTypeMapping;
-class TypeBuilder {
+export class TypeBuilder {
     constructor(typeGraphSerial, _stringTypeMapping, canonicalOrder, _allPropertiesOptional, _addProvenanceAttributes, inheritsProvenanceAttributes) {
         this._stringTypeMapping = _stringTypeMapping;
         this.canonicalOrder = canonicalOrder;
@@ -57,31 +52,31 @@ class TypeBuilder {
         this.types = [];
         this.typeAttributes = [];
         this._addedForwardingIntersection = false;
-        this._typeForIdentity = new collection_utils_1.EqualityMap();
-        (0, Support_1.assert)(!_addProvenanceAttributes || !inheritsProvenanceAttributes, "We can't both inherit as well as add provenance");
-        this.typeGraph = new TypeGraph_1.TypeGraph(this, typeGraphSerial, _addProvenanceAttributes || inheritsProvenanceAttributes);
+        this._typeForIdentity = new EqualityMap();
+        assert(!_addProvenanceAttributes || !inheritsProvenanceAttributes, "We can't both inherit as well as add provenance");
+        this.typeGraph = new TypeGraph(this, typeGraphSerial, _addProvenanceAttributes || inheritsProvenanceAttributes);
     }
     addTopLevel(name, tref) {
         // assert(t.typeGraph === this.typeGraph, "Adding top-level to wrong type graph");
-        (0, Support_1.assert)(!this.topLevels.has(name), "Trying to add top-level with existing name");
-        (0, Support_1.assert)(this.types[(0, TypeGraph_1.typeRefIndex)(tref)] !== undefined, "Trying to add a top-level type that doesn't exist (yet?)");
+        assert(!this.topLevels.has(name), "Trying to add top-level with existing name");
+        assert(this.types[typeRefIndex(tref)] !== undefined, "Trying to add a top-level type that doesn't exist (yet?)");
         this.topLevels.set(name, tref);
     }
     reserveTypeRef() {
         const index = this.types.length;
         // console.log(`reserving ${index}`);
         this.types.push(undefined);
-        const tref = (0, TypeGraph_1.makeTypeRef)(this.typeGraph, index);
+        const tref = makeTypeRef(this.typeGraph, index);
         const attributes = this._addProvenanceAttributes
-            ? exports.provenanceTypeAttributeKind.makeAttributes(new Set([index]))
-            : TypeAttributes_1.emptyTypeAttributes;
+            ? provenanceTypeAttributeKind.makeAttributes(new Set([index]))
+            : emptyTypeAttributes;
         this.typeAttributes.push(attributes);
         return tref;
     }
     assertTypeRefGraph(tref) {
         if (tref === undefined)
             return;
-        (0, TypeGraph_1.assertTypeRefGraph)(tref, this.typeGraph);
+        assertTypeRefGraph(tref, this.typeGraph);
     }
     assertTypeRefSetGraph(trefs) {
         if (trefs === undefined)
@@ -89,7 +84,7 @@ class TypeBuilder {
         trefs.forEach(tref => this.assertTypeRefGraph(tref));
     }
     filterTypeAttributes(t, attributes) {
-        const filtered = (0, collection_utils_1.mapFilter)(attributes, (_, k) => k.appliesToTypeKind(t.kind));
+        const filtered = mapFilter(attributes, (_, k) => k.appliesToTypeKind(t.kind));
         if (attributes.size !== filtered.size) {
             this.setLostTypeAttributes();
         }
@@ -97,22 +92,22 @@ class TypeBuilder {
     }
     commitType(tref, t) {
         this.assertTypeRefGraph(tref);
-        const index = (0, TypeGraph_1.typeRefIndex)(tref);
+        const index = typeRefIndex(tref);
         // const name = names !== undefined ? ` ${names.combinedName}` : "";
         // console.log(`committing ${t.kind}${name} to ${index}`);
-        (0, Support_1.assert)(this.types[index] === undefined, "A type index was committed twice");
+        assert(this.types[index] === undefined, "A type index was committed twice");
         this.types[index] = t;
         this.typeAttributes[index] = this.filterTypeAttributes(t, this.typeAttributes[index]);
     }
     addType(forwardingRef, creator, attributes) {
         if (forwardingRef !== undefined) {
             this.assertTypeRefGraph(forwardingRef);
-            (0, Support_1.assert)(this.types[(0, TypeGraph_1.typeRefIndex)(forwardingRef)] === undefined);
+            assert(this.types[typeRefIndex(forwardingRef)] === undefined);
         }
         const tref = forwardingRef !== null && forwardingRef !== void 0 ? forwardingRef : this.reserveTypeRef();
         if (attributes !== undefined) {
-            const index = (0, TypeGraph_1.typeRefIndex)(tref);
-            this.typeAttributes[index] = (0, TypeAttributes_1.combineTypeAttributes)("union", this.typeAttributes[index], attributes);
+            const index = typeRefIndex(tref);
+            this.typeAttributes[index] = combineTypeAttributes("union", this.typeAttributes[index], attributes);
         }
         const t = creator(tref);
         this.commitType(tref, t);
@@ -121,7 +116,7 @@ class TypeBuilder {
     typeAtIndex(index) {
         const maybeType = this.types[index];
         if (maybeType === undefined) {
-            return (0, Support_1.panic)("Trying to deref an undefined type in a type builder");
+            return panic("Trying to deref an undefined type in a type builder");
         }
         return maybeType;
     }
@@ -132,31 +127,31 @@ class TypeBuilder {
     }
     addAttributes(tref, attributes) {
         this.assertTypeRefGraph(tref);
-        const index = (0, TypeGraph_1.typeRefIndex)(tref);
+        const index = typeRefIndex(tref);
         const existingAttributes = this.typeAttributes[index];
-        (0, Support_1.assert)((0, collection_utils_1.iterableEvery)(attributes, ([k, v]) => {
+        assert(iterableEvery(attributes, ([k, v]) => {
             if (!k.inIdentity)
                 return true;
             const existing = existingAttributes.get(k);
             if (existing === undefined)
                 return false;
-            return (0, collection_utils_1.areEqual)(existing, v);
+            return areEqual(existing, v);
         }), "Can't add different identity type attributes to an existing type");
         const maybeType = this.types[index];
         if (maybeType !== undefined) {
             attributes = this.filterTypeAttributes(maybeType, attributes);
         }
-        const nonIdentityAttributes = (0, collection_utils_1.mapFilter)(attributes, (_, k) => !k.inIdentity);
-        this.typeAttributes[index] = (0, TypeAttributes_1.combineTypeAttributes)("union", existingAttributes, nonIdentityAttributes);
+        const nonIdentityAttributes = mapFilter(attributes, (_, k) => !k.inIdentity);
+        this.typeAttributes[index] = combineTypeAttributes("union", existingAttributes, nonIdentityAttributes);
     }
     finish() {
-        this.typeGraph.freeze(this.topLevels, this.types.map(Support_1.defined), this.typeAttributes);
+        this.typeGraph.freeze(this.topLevels, this.types.map(defined), this.typeAttributes);
         return this.typeGraph;
     }
     addForwardingIntersection(forwardingRef, tref) {
         this.assertTypeRefGraph(tref);
         this._addedForwardingIntersection = true;
-        return this.addType(forwardingRef, tr => new Type_1.IntersectionType(tr, this.typeGraph, new Set([tref])), undefined);
+        return this.addType(forwardingRef, tr => new IntersectionType(tr, this.typeGraph, new Set([tref])), undefined);
     }
     forwardIfNecessary(forwardingRef, tref) {
         if (tref === undefined)
@@ -192,7 +187,7 @@ class TypeBuilder {
                 // we found the type based on its identity, i.e. all the identity
                 // attributes must be in there already, and we have a check that
                 // asserts that no identity attributes are added later.
-                this.addAttributes(result, (0, collection_utils_1.mapFilter)(attributes, (_, k) => !k.inIdentity));
+                this.addAttributes(result, mapFilter(attributes, (_, k) => !k.inIdentity));
             }
             return result;
         }
@@ -204,65 +199,65 @@ class TypeBuilder {
         this.registerTypeForIdentity(t.identity, t.typeRef);
     }
     getPrimitiveType(kind, maybeAttributes, forwardingRef) {
-        const attributes = (0, collection_utils_1.withDefault)(maybeAttributes, TypeAttributes_1.emptyTypeAttributes);
+        const attributes = withDefault(maybeAttributes, emptyTypeAttributes);
         // FIXME: Why do date/time types need a StringTypes attribute?
         // FIXME: Remove this from here and put it into flattenStrings
-        let stringTypes = kind === "string" ? undefined : StringTypes_1.StringTypes.unrestricted;
-        if ((0, Type_1.isPrimitiveStringTypeKind)(kind) && kind !== "string") {
+        let stringTypes = kind === "string" ? undefined : StringTypes.unrestricted;
+        if (isPrimitiveStringTypeKind(kind) && kind !== "string") {
             kind = stringTypeMappingGet(this._stringTypeMapping, kind);
         }
         if (kind === "string") {
             return this.getStringType(attributes, stringTypes, forwardingRef);
         }
-        return this.getOrAddType(() => (0, Type_1.primitiveTypeIdentity)(kind, attributes), tr => new Type_1.PrimitiveType(tr, this.typeGraph, kind), attributes, forwardingRef);
+        return this.getOrAddType(() => primitiveTypeIdentity(kind, attributes), tr => new PrimitiveType(tr, this.typeGraph, kind), attributes, forwardingRef);
     }
     getStringType(attributes, stringTypes, forwardingRef) {
-        const existingStringTypes = (0, collection_utils_1.mapFind)(attributes, (_, k) => k === StringTypes_1.stringTypesTypeAttributeKind);
-        (0, Support_1.assert)((stringTypes === undefined) !== (existingStringTypes === undefined), "Must instantiate string type with one enum case attribute");
+        const existingStringTypes = mapFind(attributes, (_, k) => k === stringTypesTypeAttributeKind);
+        assert((stringTypes === undefined) !== (existingStringTypes === undefined), "Must instantiate string type with one enum case attribute");
         if (existingStringTypes === undefined) {
-            attributes = (0, TypeAttributes_1.combineTypeAttributes)("union", attributes, StringTypes_1.stringTypesTypeAttributeKind.makeAttributes((0, Support_1.defined)(stringTypes)));
+            attributes = combineTypeAttributes("union", attributes, stringTypesTypeAttributeKind.makeAttributes(defined(stringTypes)));
         }
-        return this.getOrAddType(() => (0, Type_1.primitiveTypeIdentity)("string", attributes), tr => new Type_1.PrimitiveType(tr, this.typeGraph, "string"), attributes, forwardingRef);
+        return this.getOrAddType(() => primitiveTypeIdentity("string", attributes), tr => new PrimitiveType(tr, this.typeGraph, "string"), attributes, forwardingRef);
     }
     getEnumType(attributes, cases, forwardingRef) {
-        return this.getOrAddType(() => (0, Type_1.enumTypeIdentity)(attributes, cases), tr => new Type_1.EnumType(tr, this.typeGraph, cases), attributes, forwardingRef);
+        return this.getOrAddType(() => enumTypeIdentity(attributes, cases), tr => new EnumType(tr, this.typeGraph, cases), attributes, forwardingRef);
     }
     makeClassProperty(tref, isOptional) {
-        return new Type_1.ClassProperty(tref, this.typeGraph, isOptional);
+        return new ClassProperty(tref, this.typeGraph, isOptional);
     }
     getUniqueObjectType(attributes, properties, additionalProperties, forwardingRef) {
         this.assertTypeRefGraph(additionalProperties);
-        properties = (0, collection_utils_1.definedMap)(properties, p => this.modifyPropertiesIfNecessary(p));
-        return this.addType(forwardingRef, tref => new Type_1.ObjectType(tref, this.typeGraph, "object", true, properties, additionalProperties), attributes);
+        properties = definedMap(properties, p => this.modifyPropertiesIfNecessary(p));
+        return this.addType(forwardingRef, tref => new ObjectType(tref, this.typeGraph, "object", true, properties, additionalProperties), attributes);
     }
     getUniqueMapType(forwardingRef) {
-        return this.addType(forwardingRef, tr => new Type_1.MapType(tr, this.typeGraph, undefined), undefined);
+        return this.addType(forwardingRef, tr => new MapType(tr, this.typeGraph, undefined), undefined);
     }
     getMapType(attributes, values, forwardingRef) {
         this.assertTypeRefGraph(values);
-        return this.getOrAddType(() => (0, Type_1.mapTypeIdentify)(attributes, values), tr => new Type_1.MapType(tr, this.typeGraph, values), attributes, forwardingRef);
+        return this.getOrAddType(() => mapTypeIdentify(attributes, values), tr => new MapType(tr, this.typeGraph, values), attributes, forwardingRef);
     }
     setObjectProperties(ref, properties, additionalProperties) {
         this.assertTypeRefGraph(additionalProperties);
-        const type = (0, TypeGraph_1.derefTypeRef)(ref, this.typeGraph);
-        if (!(type instanceof Type_1.ObjectType)) {
-            return (0, Support_1.panic)("Tried to set properties of non-object type");
+        const type = derefTypeRef(ref, this.typeGraph);
+        if (!(type instanceof ObjectType)) {
+            return panic("Tried to set properties of non-object type");
         }
         type.setProperties(this.modifyPropertiesIfNecessary(properties), additionalProperties);
         this.registerType(type);
     }
     getUniqueArrayType(forwardingRef) {
-        return this.addType(forwardingRef, tr => new Type_1.ArrayType(tr, this.typeGraph, undefined), undefined);
+        return this.addType(forwardingRef, tr => new ArrayType(tr, this.typeGraph, undefined), undefined);
     }
     getArrayType(attributes, items, forwardingRef) {
         this.assertTypeRefGraph(items);
-        return this.getOrAddType(() => (0, Type_1.arrayTypeIdentity)(attributes, items), tr => new Type_1.ArrayType(tr, this.typeGraph, items), attributes, forwardingRef);
+        return this.getOrAddType(() => arrayTypeIdentity(attributes, items), tr => new ArrayType(tr, this.typeGraph, items), attributes, forwardingRef);
     }
     setArrayItems(ref, items) {
         this.assertTypeRefGraph(items);
-        const type = (0, TypeGraph_1.derefTypeRef)(ref, this.typeGraph);
-        if (!(type instanceof Type_1.ArrayType)) {
-            return (0, Support_1.panic)("Tried to set items of non-array type");
+        const type = derefTypeRef(ref, this.typeGraph);
+        if (!(type instanceof ArrayType)) {
+            return panic("Tried to set items of non-array type");
         }
         type.setItems(items);
         this.registerType(type);
@@ -270,46 +265,46 @@ class TypeBuilder {
     modifyPropertiesIfNecessary(properties) {
         properties.forEach(p => this.assertTypeRefGraph(p.typeRef));
         if (this.canonicalOrder) {
-            properties = (0, collection_utils_1.mapSortByKey)(properties);
+            properties = mapSortByKey(properties);
         }
         if (this._allPropertiesOptional) {
-            properties = (0, collection_utils_1.mapMap)(properties, cp => this.makeClassProperty(cp.typeRef, true));
+            properties = mapMap(properties, cp => this.makeClassProperty(cp.typeRef, true));
         }
         return properties;
     }
     getClassType(attributes, properties, forwardingRef) {
         properties = this.modifyPropertiesIfNecessary(properties);
-        return this.getOrAddType(() => (0, Type_1.classTypeIdentity)(attributes, properties), tr => new Type_1.ClassType(tr, this.typeGraph, false, properties), attributes, forwardingRef);
+        return this.getOrAddType(() => classTypeIdentity(attributes, properties), tr => new ClassType(tr, this.typeGraph, false, properties), attributes, forwardingRef);
     }
     // FIXME: Maybe just distinguish between this and `getClassType`
     // via a flag?  That would make `ClassType.map` simpler.
     getUniqueClassType(attributes, isFixed, properties, forwardingRef) {
-        properties = (0, collection_utils_1.definedMap)(properties, p => this.modifyPropertiesIfNecessary(p));
-        return this.addType(forwardingRef, tref => new Type_1.ClassType(tref, this.typeGraph, isFixed, properties), attributes);
+        properties = definedMap(properties, p => this.modifyPropertiesIfNecessary(p));
+        return this.addType(forwardingRef, tref => new ClassType(tref, this.typeGraph, isFixed, properties), attributes);
     }
     getUnionType(attributes, members, forwardingRef) {
         this.assertTypeRefSetGraph(members);
-        return this.getOrAddType(() => (0, Type_1.unionTypeIdentity)(attributes, members), tr => new Type_1.UnionType(tr, this.typeGraph, members), attributes, forwardingRef);
+        return this.getOrAddType(() => unionTypeIdentity(attributes, members), tr => new UnionType(tr, this.typeGraph, members), attributes, forwardingRef);
     }
     // FIXME: why do we sometimes call this with defined members???
     getUniqueUnionType(attributes, members, forwardingRef) {
         this.assertTypeRefSetGraph(members);
-        return this.addType(forwardingRef, tref => new Type_1.UnionType(tref, this.typeGraph, members), attributes);
+        return this.addType(forwardingRef, tref => new UnionType(tref, this.typeGraph, members), attributes);
     }
     getIntersectionType(attributes, members, forwardingRef) {
         this.assertTypeRefSetGraph(members);
-        return this.getOrAddType(() => (0, Type_1.intersectionTypeIdentity)(attributes, members), tr => new Type_1.IntersectionType(tr, this.typeGraph, members), attributes, forwardingRef);
+        return this.getOrAddType(() => intersectionTypeIdentity(attributes, members), tr => new IntersectionType(tr, this.typeGraph, members), attributes, forwardingRef);
     }
     // FIXME: why do we sometimes call this with defined members???
     getUniqueIntersectionType(attributes, members, forwardingRef) {
         this.assertTypeRefSetGraph(members);
-        return this.addType(forwardingRef, tref => new Type_1.IntersectionType(tref, this.typeGraph, members), attributes);
+        return this.addType(forwardingRef, tref => new IntersectionType(tref, this.typeGraph, members), attributes);
     }
     setSetOperationMembers(ref, members) {
         this.assertTypeRefSetGraph(members);
-        const type = (0, TypeGraph_1.derefTypeRef)(ref, this.typeGraph);
-        if (!(type instanceof Type_1.UnionType || type instanceof Type_1.IntersectionType)) {
-            return (0, Support_1.panic)("Tried to set members of non-set-operation type");
+        const type = derefTypeRef(ref, this.typeGraph);
+        if (!(type instanceof UnionType || type instanceof IntersectionType)) {
+            return panic("Tried to set members of non-set-operation type");
         }
         type.setMembers(members);
         this.registerType(type);
@@ -318,4 +313,3 @@ class TypeBuilder {
         return;
     }
 }
-exports.TypeBuilder = TypeBuilder;

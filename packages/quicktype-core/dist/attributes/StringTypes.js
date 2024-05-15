@@ -1,12 +1,9 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.inferTransformedStringTypeKindForString = exports.stringTypesTypeAttributeKind = exports.StringTypes = void 0;
-const collection_utils_1 = require("collection-utils");
-const Support_1 = require("../support/Support");
+import { addHashCode, areEqual, definedMap, hashCodeOf, iterableFirst, mapMap, mapMergeWithInto, setIntersect, setUnionInto } from "collection-utils";
+import { assert, defined } from "../support/Support";
 // eslint-disable-next-line import/no-cycle
-const TypeBuilder_1 = require("../TypeBuilder");
-const TypeAttributes_1 = require("./TypeAttributes");
-class StringTypes {
+import { stringTypeMappingGet } from "../TypeBuilder";
+import { TypeAttributeKind } from "./TypeAttributes";
+export class StringTypes {
     static fromCase(s, count) {
         const caseMap = {};
         caseMap[s] = count;
@@ -24,7 +21,7 @@ class StringTypes {
         this.cases = cases;
         this.transformations = transformations;
         if (cases === undefined) {
-            (0, Support_1.assert)(transformations.size === 0, "We can't have an unrestricted string that also allows transformations");
+            assert(transformations.size === 0, "We can't have an unrestricted string that also allows transformations");
         }
     }
     get isRestricted() {
@@ -39,8 +36,8 @@ class StringTypes {
             const other = othersArray[i];
             if (other.cases === undefined)
                 return other;
-            (0, collection_utils_1.mapMergeWithInto)(cases, (x, y) => x + y, other.cases);
-            (0, collection_utils_1.setUnionInto)(transformations, other.transformations);
+            mapMergeWithInto(cases, (x, y) => x + y, other.cases);
+            setUnionInto(transformations, other.transformations);
         }
         return new StringTypes(cases, transformations);
     }
@@ -50,21 +47,21 @@ class StringTypes {
         for (let i = startIndex; i < othersArray.length; i++) {
             const other = othersArray[i];
             if (cases === undefined) {
-                cases = (0, collection_utils_1.definedMap)(other.cases, m => new Map(m));
+                cases = definedMap(other.cases, m => new Map(m));
             }
             else if (other.cases !== undefined) {
                 const thisCases = cases;
                 const otherCases = other.cases;
-                const intersects = (0, collection_utils_1.setIntersect)(thisCases.keys(), new Set(otherCases.keys()));
+                const intersects = setIntersect(thisCases.keys(), new Set(otherCases.keys()));
                 const entries = intersects.size > 0 ? intersects.entries() : new Set(thisCases.keys()).entries();
-                cases = (0, collection_utils_1.mapMap)(entries, k => {
+                cases = mapMap(entries, k => {
                     var _a;
-                    const thisValue = (0, Support_1.defined)(thisCases.get(k));
+                    const thisValue = defined(thisCases.get(k));
                     const otherValue = (_a = otherCases.get(k)) !== null && _a !== void 0 ? _a : Math.min();
                     return Math.min(thisValue, otherValue);
                 });
             }
-            transformations = (0, collection_utils_1.setIntersect)(transformations, other.transformations);
+            transformations = setIntersect(transformations, other.transformations);
         }
         return new StringTypes(cases, transformations);
     }
@@ -73,7 +70,7 @@ class StringTypes {
             return this;
         const kinds = new Set();
         for (const kind of this.transformations) {
-            const mapped = (0, TypeBuilder_1.stringTypeMappingGet)(mapping, kind);
+            const mapped = stringTypeMappingGet(mapping, kind);
             if (mapped === "string")
                 return StringTypes.unrestricted;
             kinds.add(mapped);
@@ -83,11 +80,11 @@ class StringTypes {
     equals(other) {
         if (!(other instanceof StringTypes))
             return false;
-        return (0, collection_utils_1.areEqual)(this.cases, other.cases) && (0, collection_utils_1.areEqual)(this.transformations, other.transformations);
+        return areEqual(this.cases, other.cases) && areEqual(this.transformations, other.transformations);
     }
     hashCode() {
-        let h = (0, collection_utils_1.hashCodeOf)(this.cases);
-        h = (0, collection_utils_1.addHashCode)(h, (0, collection_utils_1.hashCodeOf)(this.transformations));
+        let h = hashCodeOf(this.cases);
+        h = addHashCode(h, hashCodeOf(this.transformations));
         return h;
     }
     toString() {
@@ -97,7 +94,7 @@ class StringTypes {
             parts.push("unrestricted");
         }
         else {
-            const firstKey = (0, collection_utils_1.iterableFirst)(enumCases.keys());
+            const firstKey = iterableFirst(enumCases.keys());
             if (firstKey === undefined) {
                 parts.push("enum with no cases");
             }
@@ -108,9 +105,8 @@ class StringTypes {
         return parts.concat(Array.from(this.transformations)).join(",");
     }
 }
-exports.StringTypes = StringTypes;
 StringTypes.unrestricted = new StringTypes(undefined, new Set());
-class StringTypesTypeAttributeKind extends TypeAttributes_1.TypeAttributeKind {
+class StringTypesTypeAttributeKind extends TypeAttributeKind {
     constructor() {
         super("stringTypes");
     }
@@ -121,11 +117,11 @@ class StringTypesTypeAttributeKind extends TypeAttributes_1.TypeAttributeKind {
         return st.cases !== undefined && st.cases.size > 0;
     }
     combine(arr) {
-        (0, Support_1.assert)(arr.length > 0);
+        assert(arr.length > 0);
         return arr[0].union(arr, 1);
     }
     intersect(arr) {
-        (0, Support_1.assert)(arr.length > 0);
+        assert(arr.length > 0);
         return arr[0].intersect(arr, 1);
     }
     makeInferred(_) {
@@ -135,7 +131,7 @@ class StringTypesTypeAttributeKind extends TypeAttributes_1.TypeAttributeKind {
         return st.toString();
     }
 }
-exports.stringTypesTypeAttributeKind = new StringTypesTypeAttributeKind();
+export const stringTypesTypeAttributeKind = new StringTypesTypeAttributeKind();
 const INTEGER_STRING = /^(0|-?[1-9]\d*)$/;
 // We're restricting numbers to what's representable as 32 bit
 // signed integers, to be on the safe side of most languages.
@@ -166,7 +162,7 @@ function isURI(s) {
  *
  * @param s The string for which to determine the transformed string type kind.
  */
-function inferTransformedStringTypeKindForString(s, recognizer) {
+export function inferTransformedStringTypeKindForString(s, recognizer) {
     if (s.length === 0 || !"0123456789-abcdefth".includes(s[0]))
         return undefined;
     if (recognizer.isDate(s)) {
@@ -192,4 +188,3 @@ function inferTransformedStringTypeKindForString(s, recognizer) {
     }
     return undefined;
 }
-exports.inferTransformedStringTypeKindForString = inferTransformedStringTypeKindForString;

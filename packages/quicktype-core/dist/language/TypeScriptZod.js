@@ -1,21 +1,18 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.TypeScriptZodRenderer = exports.TypeScriptZodTargetLanguage = exports.typeScriptZodOptions = void 0;
-const collection_utils_1 = require("collection-utils");
-const ConvenienceRenderer_1 = require("../ConvenienceRenderer");
-const Naming_1 = require("../Naming");
-const RendererOptions_1 = require("../RendererOptions");
-const Acronyms_1 = require("../support/Acronyms");
-const Strings_1 = require("../support/Strings");
-const Support_1 = require("../support/Support");
-const TargetLanguage_1 = require("../TargetLanguage");
-const Type_1 = require("../Type");
-const TypeUtils_1 = require("../TypeUtils");
-const JavaScript_1 = require("./JavaScript");
-exports.typeScriptZodOptions = {
-    justSchema: new RendererOptions_1.BooleanOption("just-schema", "Schema only", false)
+import { arrayIntercalate } from "collection-utils";
+import { ConvenienceRenderer } from "../ConvenienceRenderer";
+import { funPrefixNamer } from "../Naming";
+import { BooleanOption, getOptionValues } from "../RendererOptions";
+import { AcronymStyleOptions, acronymStyle } from "../support/Acronyms";
+import { allLowerWordStyle, capitalize, combineWords, firstUpperWordStyle, isLetterOrUnderscore, splitIntoWords, stringEscape, utf16StringEscape } from "../support/Strings";
+import { panic } from "../support/Support";
+import { TargetLanguage } from "../TargetLanguage";
+import { ArrayType, ClassType, ObjectType, SetOperationType } from "../Type";
+import { matchType } from "../TypeUtils";
+import { legalizeName } from "./JavaScript";
+export const typeScriptZodOptions = {
+    justSchema: new BooleanOption("just-schema", "Schema only", false)
 };
-class TypeScriptZodTargetLanguage extends TargetLanguage_1.TargetLanguage {
+export class TypeScriptZodTargetLanguage extends TargetLanguage {
     getOptions() {
         return [];
     }
@@ -32,11 +29,10 @@ class TypeScriptZodTargetLanguage extends TargetLanguage_1.TargetLanguage {
         return true;
     }
     makeRenderer(renderContext, untypedOptionValues) {
-        return new TypeScriptZodRenderer(this, renderContext, (0, RendererOptions_1.getOptionValues)(exports.typeScriptZodOptions, untypedOptionValues));
+        return new TypeScriptZodRenderer(this, renderContext, getOptionValues(typeScriptZodOptions, untypedOptionValues));
     }
 }
-exports.TypeScriptZodTargetLanguage = TypeScriptZodTargetLanguage;
-class TypeScriptZodRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
+export class TypeScriptZodRenderer extends ConvenienceRenderer {
     constructor(targetLanguage, renderContext, _options) {
         super(targetLanguage, renderContext);
         this._options = _options;
@@ -45,21 +41,21 @@ class TypeScriptZodRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return ["Class", "Date", "Object", "String", "Array", "JSON", "Error"];
     }
     nameStyle(original, upper) {
-        const acronyms = (0, Acronyms_1.acronymStyle)(Acronyms_1.AcronymStyleOptions.Camel);
-        const words = (0, Strings_1.splitIntoWords)(original);
-        return (0, Strings_1.combineWords)(words, JavaScript_1.legalizeName, upper ? Strings_1.firstUpperWordStyle : Strings_1.allLowerWordStyle, Strings_1.firstUpperWordStyle, upper ? (s) => (0, Strings_1.capitalize)(acronyms(s)) : Strings_1.allLowerWordStyle, acronyms, "", Strings_1.isLetterOrUnderscore);
+        const acronyms = acronymStyle(AcronymStyleOptions.Camel);
+        const words = splitIntoWords(original);
+        return combineWords(words, legalizeName, upper ? firstUpperWordStyle : allLowerWordStyle, firstUpperWordStyle, upper ? (s) => capitalize(acronyms(s)) : allLowerWordStyle, acronyms, "", isLetterOrUnderscore);
     }
     makeNamedTypeNamer() {
-        return (0, Naming_1.funPrefixNamer)("types", s => this.nameStyle(s, true));
+        return funPrefixNamer("types", s => this.nameStyle(s, true));
     }
     makeUnionMemberNamer() {
-        return (0, Naming_1.funPrefixNamer)("properties", s => this.nameStyle(s, true));
+        return funPrefixNamer("properties", s => this.nameStyle(s, true));
     }
     namerForObjectProperty() {
-        return (0, Naming_1.funPrefixNamer)("properties", s => this.nameStyle(s, true));
+        return funPrefixNamer("properties", s => this.nameStyle(s, true));
     }
     makeEnumCaseNamer() {
-        return (0, Naming_1.funPrefixNamer)("enum-cases", s => this.nameStyle(s, false));
+        return funPrefixNamer("enum-cases", s => this.nameStyle(s, false));
     }
     importStatement(lhs, moduleName) {
         return ["import ", lhs, " from ", moduleName, ";"];
@@ -76,9 +72,9 @@ class TypeScriptZodRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         if (["class", "object", "enum"].includes(t.kind)) {
             return [this.nameForNamedType(t), "Schema"];
         }
-        const match = (0, TypeUtils_1.matchType)(t, _anyType => "z.any()", _nullType => "z.null()", _boolType => "z.boolean()", _integerType => "z.number()", _doubleType => "z.number()", _stringType => "z.string()", arrayType => ["z.array(", this.typeMapTypeFor(arrayType.items, false), ")"], _classType => (0, Support_1.panic)("Should already be handled."), _mapType => ["z.record(z.string(), ", this.typeMapTypeFor(_mapType.values, false), ")"], _enumType => (0, Support_1.panic)("Should already be handled."), unionType => {
+        const match = matchType(t, _anyType => "z.any()", _nullType => "z.null()", _boolType => "z.boolean()", _integerType => "z.number()", _doubleType => "z.number()", _stringType => "z.string()", arrayType => ["z.array(", this.typeMapTypeFor(arrayType.items, false), ")"], _classType => panic("Should already be handled."), _mapType => ["z.record(z.string(), ", this.typeMapTypeFor(_mapType.values, false), ")"], _enumType => panic("Should already be handled."), unionType => {
             const children = Array.from(unionType.getChildren()).map((type) => this.typeMapTypeFor(type, false));
-            return ["z.union([", ...(0, collection_utils_1.arrayIntercalate)(", ", children), "])"];
+            return ["z.union([", ...arrayIntercalate(", ", children), "])"];
         }, _transformedStringType => {
             if (_transformedStringType.kind === "date-time") {
                 return "z.coerce.date()";
@@ -95,7 +91,7 @@ class TypeScriptZodRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         this.emitLine("\nexport const ", name, "Schema = ", "z.object({");
         this.indent(() => {
             this.forEachClassProperty(t, "none", (_, jsonName, property) => {
-                this.emitLine(`"${(0, Strings_1.utf16StringEscape)(jsonName)}"`, ": ", this.typeMapTypeForProperty(property), ",");
+                this.emitLine(`"${utf16StringEscape(jsonName)}"`, ": ", this.typeMapTypeForProperty(property), ",");
             });
         });
         this.emitLine("});");
@@ -108,7 +104,7 @@ class TypeScriptZodRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         this.emitDescription(this.descriptionForType(e));
         this.emitLine("\nexport const ", enumName, "Schema = ", "z.enum([");
         this.indent(() => this.forEachEnumCase(e, "none", (_, jsonName) => {
-            this.emitLine('"', (0, Strings_1.stringEscape)(jsonName), '",');
+            this.emitLine('"', stringEscape(jsonName), '",');
         }));
         this.emitLine("]);");
         if (!this._options.justSchema) {
@@ -128,14 +124,14 @@ class TypeScriptZodRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         if (!type.isPrimitive() && type.kind != "enum") {
             // need to extract constituent types for unions and intersections (which both extend SetOperationType)
             // and can ignore the union/intersection itself
-            if (type instanceof Type_1.SetOperationType) {
+            if (type instanceof SetOperationType) {
                 type.members.forEach(member => {
                     // recurse as the underlying type could itself be a union, instersection or array etc.
                     typeRefs.push(...TypeScriptZodRenderer.extractUnderlyingTyperefs(member));
                 });
             }
             // need to extract additional properties for object, class and map types (which all extend ObjectType)
-            if (type instanceof Type_1.ObjectType) {
+            if (type instanceof ObjectType) {
                 const addType = type.getAdditionalProperties();
                 if (addType) {
                     // recurse as the underlying type could itself be a union, instersection or array etc.
@@ -143,7 +139,7 @@ class TypeScriptZodRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 }
             }
             // need to extract items types for ArrayType
-            if (type instanceof Type_1.ArrayType) {
+            if (type instanceof ArrayType) {
                 const itemsType = type.items;
                 if (itemsType) {
                     // recurse as the underlying type could itself be a union, instersection or array etc.
@@ -151,7 +147,7 @@ class TypeScriptZodRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 }
             }
             // Finally return the reference to a class as that will need to be defined (where objects, maps, unions, intersections and arrays do not)
-            if (type instanceof Type_1.ClassType) {
+            if (type instanceof ClassType) {
                 typeRefs.push(type.typeRef);
             }
         }
@@ -247,4 +243,3 @@ class TypeScriptZodRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         this.emitSchemas();
     }
 }
-exports.TypeScriptZodRenderer = TypeScriptZodRenderer;

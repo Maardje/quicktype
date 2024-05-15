@@ -1,36 +1,33 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.GoRenderer = exports.GoTargetLanguage = exports.goOptions = void 0;
-const Annotation_1 = require("../Annotation");
-const ConvenienceRenderer_1 = require("../ConvenienceRenderer");
-const Naming_1 = require("../Naming");
-const RendererOptions_1 = require("../RendererOptions");
-const Source_1 = require("../Source");
-const Strings_1 = require("../support/Strings");
-const Support_1 = require("../support/Support");
-const TargetLanguage_1 = require("../TargetLanguage");
-const Type_1 = require("../Type");
-const TypeUtils_1 = require("../TypeUtils");
-exports.goOptions = {
-    justTypes: new RendererOptions_1.BooleanOption("just-types", "Plain types only", false),
-    justTypesAndPackage: new RendererOptions_1.BooleanOption("just-types-and-package", "Plain types with package only", false),
-    packageName: new RendererOptions_1.StringOption("package", "Generated package name", "NAME", "main"),
-    multiFileOutput: new RendererOptions_1.BooleanOption("multi-file-output", "Renders each top-level object in its own Go file", false),
-    fieldTags: new RendererOptions_1.StringOption("field-tags", "list of tags which should be generated for fields", "TAGS", "json"),
-    omitEmpty: new RendererOptions_1.BooleanOption("omit-empty", 'If set, all non-required objects will be tagged with ",omitempty"', false)
+import { anyTypeIssueAnnotation, nullTypeIssueAnnotation } from "../Annotation";
+import { ConvenienceRenderer } from "../ConvenienceRenderer";
+import { DependencyName, funPrefixNamer } from "../Naming";
+import { BooleanOption, StringOption, getOptionValues } from "../RendererOptions";
+import { maybeAnnotated, modifySource } from "../Source";
+import { allUpperWordStyle, camelCase, combineWords, firstUpperWordStyle, isLetterOrUnderscore, isLetterOrUnderscoreOrDigit, legalizeCharacters, splitIntoWords, stringEscape } from "../support/Strings";
+import { assert, defined } from "../support/Support";
+import { TargetLanguage } from "../TargetLanguage";
+import { UnionType } from "../Type";
+import { matchType, nullableFromUnion, removeNullFromUnion } from "../TypeUtils";
+export const goOptions = {
+    justTypes: new BooleanOption("just-types", "Plain types only", false),
+    justTypesAndPackage: new BooleanOption("just-types-and-package", "Plain types with package only", false),
+    packageName: new StringOption("package", "Generated package name", "NAME", "main"),
+    multiFileOutput: new BooleanOption("multi-file-output", "Renders each top-level object in its own Go file", false),
+    fieldTags: new StringOption("field-tags", "list of tags which should be generated for fields", "TAGS", "json"),
+    omitEmpty: new BooleanOption("omit-empty", 'If set, all non-required objects will be tagged with ",omitempty"', false)
 };
-class GoTargetLanguage extends TargetLanguage_1.TargetLanguage {
+export class GoTargetLanguage extends TargetLanguage {
     constructor() {
         super("Go", ["go", "golang"], "go");
     }
     getOptions() {
         return [
-            exports.goOptions.justTypes,
-            exports.goOptions.justTypesAndPackage,
-            exports.goOptions.packageName,
-            exports.goOptions.multiFileOutput,
-            exports.goOptions.fieldTags,
-            exports.goOptions.omitEmpty
+            goOptions.justTypes,
+            goOptions.justTypesAndPackage,
+            goOptions.packageName,
+            goOptions.multiFileOutput,
+            goOptions.fieldTags,
+            goOptions.omitEmpty
         ];
     }
     get supportsUnionsWithBothNumberTypes() {
@@ -45,18 +42,17 @@ class GoTargetLanguage extends TargetLanguage_1.TargetLanguage {
         return true;
     }
     makeRenderer(renderContext, untypedOptionValues) {
-        return new GoRenderer(this, renderContext, (0, RendererOptions_1.getOptionValues)(exports.goOptions, untypedOptionValues));
+        return new GoRenderer(this, renderContext, getOptionValues(goOptions, untypedOptionValues));
     }
     get defaultIndentation() {
         return "\t";
     }
 }
-exports.GoTargetLanguage = GoTargetLanguage;
-const namingFunction = (0, Naming_1.funPrefixNamer)("namer", goNameStyle);
-const legalizeName = (0, Strings_1.legalizeCharacters)(Strings_1.isLetterOrUnderscoreOrDigit);
+const namingFunction = funPrefixNamer("namer", goNameStyle);
+const legalizeName = legalizeCharacters(isLetterOrUnderscoreOrDigit);
 function goNameStyle(original) {
-    const words = (0, Strings_1.splitIntoWords)(original);
-    return (0, Strings_1.combineWords)(words, legalizeName, Strings_1.firstUpperWordStyle, Strings_1.firstUpperWordStyle, Strings_1.allUpperWordStyle, Strings_1.allUpperWordStyle, "", Strings_1.isLetterOrUnderscore);
+    const words = splitIntoWords(original);
+    return combineWords(words, legalizeName, firstUpperWordStyle, firstUpperWordStyle, allUpperWordStyle, allUpperWordStyle, "", isLetterOrUnderscore);
 }
 const primitiveValueTypeKinds = ["integer", "double", "bool", "string"];
 const compoundTypeKinds = ["array", "class", "map", "enum"];
@@ -72,7 +68,7 @@ function canOmitEmpty(cp, omitEmptyOption) {
     const t = cp.type;
     return !["union", "null", "any"].includes(t.kind);
 }
-class GoRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
+export class GoRenderer extends ConvenienceRenderer {
     constructor(targetLanguage, renderContext, _options) {
         super(targetLanguage, renderContext);
         this._options = _options;
@@ -94,7 +90,7 @@ class GoRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return true;
     }
     makeTopLevelDependencyNames(_, topLevelName) {
-        const unmarshalName = new Naming_1.DependencyName(namingFunction, topLevelName.order, lookup => `unmarshal_${lookup(topLevelName)}`);
+        const unmarshalName = new DependencyName(namingFunction, topLevelName.order, lookup => `unmarshal_${lookup(topLevelName)}`);
         this._topLevelUnmarshalNames.set(topLevelName, unmarshalName);
         return [unmarshalName];
     }
@@ -103,7 +99,7 @@ class GoRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         if (this._options.multiFileOutput === false) {
             return;
         }
-        (0, Support_1.assert)(this._currentFilename === undefined, "Previous file wasn't finished: " + this._currentFilename);
+        assert(this._currentFilename === undefined, "Previous file wasn't finished: " + this._currentFilename);
         this._currentFilename = `${this.sourcelikeToString(basename)}.go`;
         this.initializeEmitContextForFilename(this._currentFilename);
     }
@@ -112,7 +108,7 @@ class GoRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         if (this._options.multiFileOutput === false) {
             return;
         }
-        this.finishFile((0, Support_1.defined)(this._currentFilename));
+        this.finishFile(defined(this._currentFilename));
         this._currentFilename = undefined;
     }
     emitBlock(line, f) {
@@ -137,7 +133,7 @@ class GoRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     }
     propertyGoType(cp) {
         const t = cp.type;
-        if (t instanceof Type_1.UnionType && (0, TypeUtils_1.nullableFromUnion)(t) === null) {
+        if (t instanceof UnionType && nullableFromUnion(t) === null) {
             return ["*", this.goType(t, true)];
         }
         if (cp.isOptional) {
@@ -146,10 +142,10 @@ class GoRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return this.goType(t, true);
     }
     goType(t, withIssues = false) {
-        return (0, TypeUtils_1.matchType)(t, _anyType => (0, Source_1.maybeAnnotated)(withIssues, Annotation_1.anyTypeIssueAnnotation, "interface{}"), _nullType => (0, Source_1.maybeAnnotated)(withIssues, Annotation_1.nullTypeIssueAnnotation, "interface{}"), _boolType => "bool", _integerType => "int64", _doubleType => "float64", _stringType => "string", arrayType => ["[]", this.goType(arrayType.items, withIssues)], classType => this.nameForNamedType(classType), mapType => {
+        return matchType(t, _anyType => maybeAnnotated(withIssues, anyTypeIssueAnnotation, "interface{}"), _nullType => maybeAnnotated(withIssues, nullTypeIssueAnnotation, "interface{}"), _boolType => "bool", _integerType => "int64", _doubleType => "float64", _stringType => "string", arrayType => ["[]", this.goType(arrayType.items, withIssues)], classType => this.nameForNamedType(classType), mapType => {
             let valueSource;
             const v = mapType.values;
-            if (v instanceof Type_1.UnionType && (0, TypeUtils_1.nullableFromUnion)(v) === null) {
+            if (v instanceof UnionType && nullableFromUnion(v) === null) {
                 valueSource = ["*", this.nameForNamedType(v)];
             }
             else {
@@ -157,7 +153,7 @@ class GoRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             }
             return ["map[string]", valueSource];
         }, enumType => this.nameForNamedType(enumType), unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null)
                 return this.nullableGoType(nullable, withIssues);
             return this.nameForNamedType(unionType);
@@ -177,12 +173,12 @@ class GoRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             this.emitLineOnce("// This file was generated from JSON Schema using quicktype, do not modify it directly.");
             this.emitLineOnce("// To parse and unparse this JSON data, add this code to your project and do:");
             this.emitLineOnce("//");
-            const ref = (0, Source_1.modifySource)(Strings_1.camelCase, name);
-            this.emitLineOnce("//    ", ref, ", err := ", (0, Support_1.defined)(this._topLevelUnmarshalNames.get(name)), "(bytes)");
+            const ref = modifySource(camelCase, name);
+            this.emitLineOnce("//    ", ref, ", err := ", defined(this._topLevelUnmarshalNames.get(name)), "(bytes)");
             this.emitLineOnce("//    bytes, err = ", ref, ".Marshal()");
         }
         this.emitPackageDefinitons(true);
-        const unmarshalName = (0, Support_1.defined)(this._topLevelUnmarshalNames.get(name));
+        const unmarshalName = defined(this._topLevelUnmarshalNames.get(name));
         if (this.namedTypeToNameForTopLevel(t) === undefined) {
             this.emitLine("type ", name, " ", this.goType(t));
         }
@@ -212,7 +208,7 @@ class GoRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             docStrings.forEach(doc => columns.push([doc]));
             const tags = this._options.fieldTags
                 .split(",")
-                .map(tag => tag + ':"' + (0, Strings_1.stringEscape)(jsonName) + omitEmpty + '"')
+                .map(tag => tag + ':"' + stringEscape(jsonName) + omitEmpty + '"')
                 .join(" ");
             columns.push([
                 [name, " "],
@@ -239,7 +235,7 @@ class GoRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         this.forEachEnumCase(e, "none", (name, jsonName) => {
             columns.push([
                 [name, " "],
-                [enumName, ' = "', (0, Strings_1.stringEscape)(jsonName), '"']
+                [enumName, ' = "', stringEscape(jsonName), '"']
             ]);
         });
         this.indent(() => this.emitTable(columns));
@@ -249,7 +245,7 @@ class GoRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     emitUnion(u, unionName) {
         this.startFile(unionName);
         this.emitPackageDefinitons(false);
-        const [hasNull, nonNulls] = (0, TypeUtils_1.removeNullFromUnion)(u);
+        const [hasNull, nonNulls] = removeNullFromUnion(u);
         const isNullableArg = hasNull !== null ? "true" : "false";
         const ifMember = (kind, ifNotMember, f) => {
             const maybeType = u.findMember(kind);
@@ -321,8 +317,8 @@ class GoRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         this.emitLineOnce("// To parse and unparse this JSON data, add this code to your project and do:");
         this.forEachTopLevel("none", (_, name) => {
             this.emitLine("//");
-            const ref = (0, Source_1.modifySource)(Strings_1.camelCase, name);
-            this.emitLine("//    ", ref, ", err := ", (0, Support_1.defined)(this._topLevelUnmarshalNames.get(name)), "(bytes)");
+            const ref = modifySource(camelCase, name);
+            this.emitLine("//    ", ref, ", err := ", defined(this._topLevelUnmarshalNames.get(name)), "(bytes)");
             this.emitLine("//    bytes, err = ", ref, ".Marshal()");
         });
     }
@@ -550,4 +546,3 @@ func marshalUnion(pi *int64, pf *float64, pb *bool, ps *string, haveArray bool, 
         return imports;
     }
 }
-exports.GoRenderer = GoRenderer;

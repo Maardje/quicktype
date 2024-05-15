@@ -1,20 +1,17 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.inferMaps = void 0;
-const collection_utils_1 = require("collection-utils");
-const MarkovChain_1 = require("../MarkovChain");
-const Support_1 = require("../support/Support");
-const Type_1 = require("../Type");
-const TypeUtils_1 = require("../TypeUtils");
-const UnifyClasses_1 = require("../UnifyClasses");
+import { iterableEvery, iterableFirst, setMap } from "collection-utils";
+import { evaluate, load } from "../MarkovChain";
+import { defined, panic } from "../support/Support";
+import { ClassType, isPrimitiveStringTypeKind, setOperationCasesEqual } from "../Type";
+import { removeNullFromType } from "../TypeUtils";
+import { unifyTypes, unionBuilderForUnification } from "../UnifyClasses";
 const mapSizeThreshold = 20;
 const stringMapSizeThreshold = 50;
 let markovChain = undefined;
 function nameProbability(name) {
     if (markovChain === undefined) {
-        markovChain = (0, MarkovChain_1.load)();
+        markovChain = load();
     }
-    return (0, MarkovChain_1.evaluate)(markovChain, name);
+    return evaluate(markovChain, name);
 }
 function shouldBeMap(properties) {
     // Only classes with a certain number of properties are inferred
@@ -24,13 +21,13 @@ function shouldBeMap(properties) {
         return undefined;
     // If all property names are digit-only, we always make a map, no
     // questions asked.
-    if ((0, collection_utils_1.iterableEvery)(properties.keys(), n => /^[0-9]+$/.test(n))) {
-        return (0, collection_utils_1.setMap)(properties.values(), cp => cp.type);
+    if (iterableEvery(properties.keys(), n => /^[0-9]+$/.test(n))) {
+        return setMap(properties.values(), cp => cp.type);
     }
     // If all properties are strings or null then an object must have at least
     // `stringMapSizeThreshold` to qualify as a map.
     if (numProperties < stringMapSizeThreshold &&
-        (0, collection_utils_1.iterableEvery)(properties.values(), cp => (0, Type_1.isPrimitiveStringTypeKind)(cp.type.kind) || cp.type.kind === "null")) {
+        iterableEvery(properties.values(), cp => isPrimitiveStringTypeKind(cp.type.kind) || cp.type.kind === "null")) {
         return undefined;
     }
     if (numProperties < mapSizeThreshold) {
@@ -70,12 +67,12 @@ function shouldBeMap(properties) {
     // Check that all the property types are the same, modulo nullability.
     for (const [, p] of properties) {
         // The set of types first property can be, minus null.
-        const nn = (0, TypeUtils_1.removeNullFromType)(p.type)[1];
+        const nn = removeNullFromType(p.type)[1];
         if (nn.size > 0) {
             if (firstNonNullCases !== undefined) {
                 // The set of non-null cases for all other properties must
                 // be the the same, otherwise we won't infer a map.
-                if (!(0, Type_1.setOperationCasesEqual)(nn, firstNonNullCases, true, (a, b) => a.structurallyCompatible(b, true))) {
+                if (!setOperationCasesEqual(nn, firstNonNullCases, true, (a, b) => a.structurallyCompatible(b, true))) {
                     canBeMap = false;
                     break;
                 }
@@ -91,13 +88,13 @@ function shouldBeMap(properties) {
     }
     return allCases;
 }
-function inferMaps(graph, stringTypeMapping, conflateNumbers, debugPrintReconstitution) {
+export function inferMaps(graph, stringTypeMapping, conflateNumbers, debugPrintReconstitution) {
     function replaceClass(setOfOneClass, builder, forwardingRef) {
-        const c = (0, Support_1.defined)((0, collection_utils_1.iterableFirst)(setOfOneClass));
+        const c = defined(iterableFirst(setOfOneClass));
         const properties = c.getProperties();
         const shouldBe = shouldBeMap(properties);
         if (shouldBe === undefined) {
-            return (0, Support_1.panic)(`We shouldn't be replacing class ${c.getCombinedName()} with a map`);
+            return panic(`We shouldn't be replacing class ${c.getCombinedName()} with a map`);
         }
         // Now reconstitute all the types in the new graph.  TypeGraphs are
         // immutable, so any change in the graph actually means building a new
@@ -105,13 +102,12 @@ function inferMaps(graph, stringTypeMapping, conflateNumbers, debugPrintReconsti
         // Reconstituting a type means generating the "same" type in the new
         // type graph.  Except we don't get Type objects but TypeRef objects,
         // which is a type-to-be.
-        return builder.getMapType(c.getAttributes(), (0, UnifyClasses_1.unifyTypes)(shouldBe, c.getAttributes(), builder, (0, UnifyClasses_1.unionBuilderForUnification)(builder, false, false, conflateNumbers), conflateNumbers), forwardingRef);
+        return builder.getMapType(c.getAttributes(), unifyTypes(shouldBe, c.getAttributes(), builder, unionBuilderForUnification(builder, false, false, conflateNumbers), conflateNumbers), forwardingRef);
     }
     const classesToReplace = Array.from(graph.allNamedTypesSeparated().objects).filter(o => {
-        if (!(o instanceof Type_1.ClassType))
+        if (!(o instanceof ClassType))
             return false;
         return !o.isFixed && shouldBeMap(o.getProperties()) !== undefined;
     });
     return graph.rewrite("infer maps", stringTypeMapping, false, classesToReplace.map(c => [c]), debugPrintReconstitution, replaceClass);
 }
-exports.inferMaps = inferMaps;

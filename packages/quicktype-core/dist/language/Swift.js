@@ -1,48 +1,45 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.SwiftRenderer = exports.SwiftTargetLanguage = exports.swiftOptions = void 0;
-const collection_utils_1 = require("collection-utils");
-const Annotation_1 = require("../Annotation");
-const ConvenienceRenderer_1 = require("../ConvenienceRenderer");
-const DateTime_1 = require("../DateTime");
-const Naming_1 = require("../Naming");
-const RendererOptions_1 = require("../RendererOptions");
-const Source_1 = require("../Source");
-const Acronyms_1 = require("../support/Acronyms");
-const Strings_1 = require("../support/Strings");
-const Support_1 = require("../support/Support");
-const TargetLanguage_1 = require("../TargetLanguage");
-const Type_1 = require("../Type");
-const TypeUtils_1 = require("../TypeUtils");
+import { arrayIntercalate } from "collection-utils";
+import { anyTypeIssueAnnotation, nullTypeIssueAnnotation } from "../Annotation";
+import { ConvenienceRenderer } from "../ConvenienceRenderer";
+import { DefaultDateTimeRecognizer } from "../DateTime";
+import { funPrefixNamer } from "../Naming";
+import { BooleanOption, EnumOption, StringOption, getOptionValues } from "../RendererOptions";
+import { maybeAnnotated, modifySource } from "../Source";
+import { AcronymStyleOptions, acronymOption, acronymStyle } from "../support/Acronyms";
+import { addPrefixIfNecessary, allLowerWordStyle, allUpperWordStyle, camelCase, combineWords, escapeNonPrintableMapper, firstUpperWordStyle, intToHex, isDigit, isLetterOrUnderscore, isNumeric, isPrintable, legalizeCharacters, splitIntoWords, utf32ConcatMap } from "../support/Strings";
+import { assert, defined, panic } from "../support/Support";
+import { TargetLanguage } from "../TargetLanguage";
+import { ArrayType, EnumType, MapType } from "../Type";
+import { matchType, nullableFromUnion, removeNullFromUnion } from "../TypeUtils";
 const MAX_SAMELINE_PROPERTIES = 4;
-exports.swiftOptions = {
-    justTypes: new RendererOptions_1.BooleanOption("just-types", "Plain types only", false),
-    convenienceInitializers: new RendererOptions_1.BooleanOption("initializers", "Generate initializers and mutators", true),
-    explicitCodingKeys: new RendererOptions_1.BooleanOption("coding-keys", "Explicit CodingKey values in Codable types", true),
-    codingKeysProtocol: new RendererOptions_1.StringOption("coding-keys-protocol", "CodingKeys implements protocols", "protocol1, protocol2...", "", "secondary"),
-    alamofire: new RendererOptions_1.BooleanOption("alamofire", "Alamofire extensions", false),
-    namedTypePrefix: new RendererOptions_1.StringOption("type-prefix", "Prefix for type names", "PREFIX", "", "secondary"),
-    useClasses: new RendererOptions_1.EnumOption("struct-or-class", "Structs or classes", [
+export const swiftOptions = {
+    justTypes: new BooleanOption("just-types", "Plain types only", false),
+    convenienceInitializers: new BooleanOption("initializers", "Generate initializers and mutators", true),
+    explicitCodingKeys: new BooleanOption("coding-keys", "Explicit CodingKey values in Codable types", true),
+    codingKeysProtocol: new StringOption("coding-keys-protocol", "CodingKeys implements protocols", "protocol1, protocol2...", "", "secondary"),
+    alamofire: new BooleanOption("alamofire", "Alamofire extensions", false),
+    namedTypePrefix: new StringOption("type-prefix", "Prefix for type names", "PREFIX", "", "secondary"),
+    useClasses: new EnumOption("struct-or-class", "Structs or classes", [
         ["struct", false],
         ["class", true]
     ]),
-    mutableProperties: new RendererOptions_1.BooleanOption("mutable-properties", "Use var instead of let for object properties", false),
-    acronymStyle: (0, Acronyms_1.acronymOption)(Acronyms_1.AcronymStyleOptions.Pascal),
-    dense: new RendererOptions_1.EnumOption("density", "Code density", [
+    mutableProperties: new BooleanOption("mutable-properties", "Use var instead of let for object properties", false),
+    acronymStyle: acronymOption(AcronymStyleOptions.Pascal),
+    dense: new EnumOption("density", "Code density", [
         ["dense", true],
         ["normal", false]
     ], "dense", "secondary"),
-    linux: new RendererOptions_1.BooleanOption("support-linux", "Support Linux", false, "secondary"),
-    objcSupport: new RendererOptions_1.BooleanOption("objective-c-support", "Objects inherit from NSObject and @objcMembers is added to classes", false),
-    optionalEnums: new RendererOptions_1.BooleanOption("optional-enums", "If no matching case is found enum value is set to null", false),
-    swift5Support: new RendererOptions_1.BooleanOption("swift-5-support", "Renders output in a Swift 5 compatible mode", false),
-    sendable: new RendererOptions_1.BooleanOption("sendable", "Mark generated models as Sendable", false),
-    multiFileOutput: new RendererOptions_1.BooleanOption("multi-file-output", "Renders each top-level object in its own Swift file", false),
-    accessLevel: new RendererOptions_1.EnumOption("access-level", "Access level", [
+    linux: new BooleanOption("support-linux", "Support Linux", false, "secondary"),
+    objcSupport: new BooleanOption("objective-c-support", "Objects inherit from NSObject and @objcMembers is added to classes", false),
+    optionalEnums: new BooleanOption("optional-enums", "If no matching case is found enum value is set to null", false),
+    swift5Support: new BooleanOption("swift-5-support", "Renders output in a Swift 5 compatible mode", false),
+    sendable: new BooleanOption("sendable", "Mark generated models as Sendable", false),
+    multiFileOutput: new BooleanOption("multi-file-output", "Renders each top-level object in its own Swift file", false),
+    accessLevel: new EnumOption("access-level", "Access level", [
         ["internal", "internal"],
         ["public", "public"]
     ], "internal", "secondary"),
-    protocol: new RendererOptions_1.EnumOption("protocol", "Make types implement protocol", [
+    protocol: new EnumOption("protocol", "Make types implement protocol", [
         ["none", { equatable: false, hashable: false }],
         ["equatable", { equatable: true, hashable: false }],
         ["hashable", { equatable: false, hashable: true }]
@@ -59,35 +56,35 @@ exports.swiftOptions = {
 // 2018-08-14T02:45:50z
 // 2018-00008-1T002:45:3Z
 const swiftDateTimeRegex = /^\d+-\d+-\d+T\d+:\d+:\d+([zZ]|[+-]\d+(:\d+)?)$/;
-class SwiftDateTimeRecognizer extends DateTime_1.DefaultDateTimeRecognizer {
+class SwiftDateTimeRecognizer extends DefaultDateTimeRecognizer {
     isDateTime(str) {
         return swiftDateTimeRegex.exec(str) !== null;
     }
 }
-class SwiftTargetLanguage extends TargetLanguage_1.TargetLanguage {
+export class SwiftTargetLanguage extends TargetLanguage {
     constructor() {
         super("Swift", ["swift", "swift4"], "swift");
     }
     getOptions() {
         return [
-            exports.swiftOptions.justTypes,
-            exports.swiftOptions.useClasses,
-            exports.swiftOptions.dense,
-            exports.swiftOptions.convenienceInitializers,
-            exports.swiftOptions.explicitCodingKeys,
-            exports.swiftOptions.codingKeysProtocol,
-            exports.swiftOptions.accessLevel,
-            exports.swiftOptions.alamofire,
-            exports.swiftOptions.linux,
-            exports.swiftOptions.namedTypePrefix,
-            exports.swiftOptions.protocol,
-            exports.swiftOptions.acronymStyle,
-            exports.swiftOptions.objcSupport,
-            exports.swiftOptions.optionalEnums,
-            exports.swiftOptions.sendable,
-            exports.swiftOptions.swift5Support,
-            exports.swiftOptions.multiFileOutput,
-            exports.swiftOptions.mutableProperties
+            swiftOptions.justTypes,
+            swiftOptions.useClasses,
+            swiftOptions.dense,
+            swiftOptions.convenienceInitializers,
+            swiftOptions.explicitCodingKeys,
+            swiftOptions.codingKeysProtocol,
+            swiftOptions.accessLevel,
+            swiftOptions.alamofire,
+            swiftOptions.linux,
+            swiftOptions.namedTypePrefix,
+            swiftOptions.protocol,
+            swiftOptions.acronymStyle,
+            swiftOptions.objcSupport,
+            swiftOptions.optionalEnums,
+            swiftOptions.sendable,
+            swiftOptions.swift5Support,
+            swiftOptions.multiFileOutput,
+            swiftOptions.mutableProperties
         ];
     }
     get stringTypeMapping() {
@@ -102,13 +99,12 @@ class SwiftTargetLanguage extends TargetLanguage_1.TargetLanguage {
         return true;
     }
     makeRenderer(renderContext, untypedOptionValues) {
-        return new SwiftRenderer(this, renderContext, (0, RendererOptions_1.getOptionValues)(exports.swiftOptions, untypedOptionValues));
+        return new SwiftRenderer(this, renderContext, getOptionValues(swiftOptions, untypedOptionValues));
     }
     get dateTimeRecognizer() {
         return new SwiftDateTimeRecognizer();
     }
 }
-exports.SwiftTargetLanguage = SwiftTargetLanguage;
 const keywords = [
     "await",
     "associatedtype",
@@ -211,22 +207,22 @@ const keywords = [
     "jsonData"
 ];
 function isPartCharacter(codePoint) {
-    return (0, Strings_1.isLetterOrUnderscore)(codePoint) || (0, Strings_1.isNumeric)(codePoint);
+    return isLetterOrUnderscore(codePoint) || isNumeric(codePoint);
 }
 function isStartCharacter(codePoint) {
-    return isPartCharacter(codePoint) && !(0, Strings_1.isDigit)(codePoint);
+    return isPartCharacter(codePoint) && !isDigit(codePoint);
 }
-const legalizeName = (0, Strings_1.legalizeCharacters)(isPartCharacter);
-function swiftNameStyle(prefix, isUpper, original, acronymsStyle = Strings_1.allUpperWordStyle) {
-    const words = (0, Strings_1.splitIntoWords)(original);
-    const combined = (0, Strings_1.combineWords)(words, legalizeName, isUpper ? Strings_1.firstUpperWordStyle : Strings_1.allLowerWordStyle, Strings_1.firstUpperWordStyle, isUpper ? Strings_1.allUpperWordStyle : Strings_1.allLowerWordStyle, acronymsStyle, "", isStartCharacter);
-    return (0, Strings_1.addPrefixIfNecessary)(prefix, combined);
+const legalizeName = legalizeCharacters(isPartCharacter);
+function swiftNameStyle(prefix, isUpper, original, acronymsStyle = allUpperWordStyle) {
+    const words = splitIntoWords(original);
+    const combined = combineWords(words, legalizeName, isUpper ? firstUpperWordStyle : allLowerWordStyle, firstUpperWordStyle, isUpper ? allUpperWordStyle : allLowerWordStyle, acronymsStyle, "", isStartCharacter);
+    return addPrefixIfNecessary(prefix, combined);
 }
 function unicodeEscape(codePoint) {
-    return "\\u{" + (0, Strings_1.intToHex)(codePoint, 0) + "}";
+    return "\\u{" + intToHex(codePoint, 0) + "}";
 }
-const stringEscape = (0, Strings_1.utf32ConcatMap)((0, Strings_1.escapeNonPrintableMapper)(Strings_1.isPrintable, unicodeEscape));
-class SwiftRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
+const stringEscape = utf32ConcatMap(escapeNonPrintableMapper(isPrintable, unicodeEscape));
+export class SwiftRenderer extends ConvenienceRenderer {
     constructor(targetLanguage, renderContext, _options) {
         super(targetLanguage, renderContext);
         this._options = _options;
@@ -543,7 +539,7 @@ class SwiftRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return { names: [], includeGlobalForbidden: true };
     }
     makeNamedTypeNamer() {
-        return (0, Naming_1.funPrefixNamer)("upper", s => swiftNameStyle(this._options.namedTypePrefix, true, s, (0, Acronyms_1.acronymStyle)(this._options.acronymStyle)));
+        return funPrefixNamer("upper", s => swiftNameStyle(this._options.namedTypePrefix, true, s, acronymStyle(this._options.acronymStyle)));
     }
     namerForObjectProperty() {
         return this.lowerNamingFunction;
@@ -576,7 +572,7 @@ class SwiftRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             return notJustTypes;
     }
     get lowerNamingFunction() {
-        return (0, Naming_1.funPrefixNamer)("lower", s => swiftNameStyle("", false, s, (0, Acronyms_1.acronymStyle)(this._options.acronymStyle)));
+        return funPrefixNamer("lower", s => swiftNameStyle("", false, s, acronymStyle(this._options.acronymStyle)));
     }
     swiftPropertyType(p) {
         if (p.isOptional || (this._options.optionalEnums && p.type.kind === "enum")) {
@@ -588,14 +584,14 @@ class SwiftRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     }
     swiftType(t, withIssues = false, noOptional = false) {
         const optional = noOptional ? "" : "?";
-        return (0, TypeUtils_1.matchType)(t, _anyType => {
+        return matchType(t, _anyType => {
             this._needAny = true;
-            return (0, Source_1.maybeAnnotated)(withIssues, Annotation_1.anyTypeIssueAnnotation, this.justTypesCase(["Any", optional], "JSONAny"));
+            return maybeAnnotated(withIssues, anyTypeIssueAnnotation, this.justTypesCase(["Any", optional], "JSONAny"));
         }, _nullType => {
             this._needNull = true;
-            return (0, Source_1.maybeAnnotated)(withIssues, Annotation_1.nullTypeIssueAnnotation, this.justTypesCase("NSNull", ["JSONNull", optional]));
+            return maybeAnnotated(withIssues, nullTypeIssueAnnotation, this.justTypesCase("NSNull", ["JSONNull", optional]));
         }, _boolType => "Bool", _integerType => "Int", _doubleType => "Double", _stringType => "String", arrayType => ["[", this.swiftType(arrayType.items, withIssues), "]"], classType => this.nameForNamedType(classType), mapType => ["[String: ", this.swiftType(mapType.values, withIssues), "]"], enumType => this.nameForNamedType(enumType), unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null)
                 return [this.swiftType(nullable, withIssues), optional];
             return this.nameForNamedType(unionType);
@@ -604,7 +600,7 @@ class SwiftRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 return "Date";
             }
             else {
-                return (0, Support_1.panic)(`Transformed string type ${transformedStringType.kind} not supported`);
+                return panic(`Transformed string type ${transformedStringType.kind} not supported`);
             }
         });
     }
@@ -622,11 +618,11 @@ class SwiftRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         this.emitLineOnce("// To parse the JSON, add this file to your project and do:");
         this.emitLineOnce("//");
         this.forEachTopLevel("none", (t, topLevelName) => {
-            if (this._options.convenienceInitializers && !(t instanceof Type_1.EnumType)) {
-                this.emitLineOnce("//   let ", (0, Source_1.modifySource)(Strings_1.camelCase, topLevelName), " = try ", topLevelName, "(json)");
+            if (this._options.convenienceInitializers && !(t instanceof EnumType)) {
+                this.emitLineOnce("//   let ", modifySource(camelCase, topLevelName), " = try ", topLevelName, "(json)");
             }
             else {
-                this.emitLineOnce("//   let ", (0, Source_1.modifySource)(Strings_1.camelCase, topLevelName), " = ", "try? JSONDecoder().decode(", topLevelName, ".self, from: jsonData)");
+                this.emitLineOnce("//   let ", modifySource(camelCase, topLevelName), " = ", "try? JSONDecoder().decode(", topLevelName, ".self, from: jsonData)");
             }
         });
     }
@@ -639,11 +635,11 @@ class SwiftRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 this.emitLineOnce("// This file was generated from JSON Schema using quicktype, do not modify it directly.");
                 this.emitLineOnce("// To parse the JSON, add this file to your project and do:");
                 this.emitLineOnce("//");
-                if (this._options.convenienceInitializers && !(type instanceof Type_1.EnumType)) {
-                    this.emitLine("//   let ", (0, Source_1.modifySource)(Strings_1.camelCase, name), " = try ", name, "(json)");
+                if (this._options.convenienceInitializers && !(type instanceof EnumType)) {
+                    this.emitLine("//   let ", modifySource(camelCase, name), " = try ", name, "(json)");
                 }
                 else {
-                    this.emitLine("//   let ", (0, Source_1.modifySource)(Strings_1.camelCase, name), " = ", "try? newJSONDecoder().decode(", name, ".self, from: jsonData)");
+                    this.emitLine("//   let ", modifySource(camelCase, name), " = ", "try? newJSONDecoder().decode(", name, ".self, from: jsonData)");
                 }
             }
             if (this._options.alamofire) {
@@ -651,7 +647,7 @@ class SwiftRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 this.emitLine("// To parse values from Alamofire responses:");
                 this.emitLine("//");
                 this.emitLine("//   Alamofire.request(url).response", name, " { response in");
-                this.emitLine("//     if let ", (0, Source_1.modifySource)(Strings_1.camelCase, name), " = response.result.value {");
+                this.emitLine("//     if let ", modifySource(camelCase, name), " = response.result.value {");
                 this.emitLine("//       ...");
                 this.emitLine("//     }");
                 this.emitLine("//   }");
@@ -744,7 +740,7 @@ class SwiftRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         if (this._options.multiFileOutput === false) {
             return;
         }
-        (0, Support_1.assert)(this._currentFilename === undefined, "Previous file wasn't finished: " + this._currentFilename);
+        assert(this._currentFilename === undefined, "Previous file wasn't finished: " + this._currentFilename);
         // FIXME: The filenames should actually be Sourcelikes, too
         this._currentFilename = `${this.sourcelikeToString(basename)}.swift`;
         this.initializeEmitContextForFilename(this._currentFilename);
@@ -754,7 +750,7 @@ class SwiftRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         if (this._options.multiFileOutput === false) {
             return;
         }
-        this.finishFile((0, Support_1.defined)(this._currentFilename));
+        this.finishFile(defined(this._currentFilename));
         this._currentFilename = undefined;
     }
     propertyLinesDefinition(name, parameter) {
@@ -854,7 +850,7 @@ class SwiftRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                                 this.emitLine("case ", name, ' = "', label, '"');
                             }
                             else {
-                                const names = (0, collection_utils_1.arrayIntercalate)(", ", group.map(p => p.name));
+                                const names = arrayIntercalate(", ", group.map(p => p.name));
                                 this.emitLine("case ", names);
                             }
                         }
@@ -1049,7 +1045,7 @@ encoder.dateEncodingStrategy = .formatted(formatter)`);
         };
         this.emitDescription(this.descriptionForType(u));
         const indirect = this.isCycleBreakerType(u) ? "indirect " : "";
-        const [maybeNull, nonNulls] = (0, TypeUtils_1.removeNullFromUnion)(u, sortBy);
+        const [maybeNull, nonNulls] = removeNullFromUnion(u, sortBy);
         this.emitBlockWithAccess([indirect, "enum ", unionName, this.getProtocolString("enum")], () => {
             this.forEachUnionMember(u, nonNulls, "none", null, (name, t) => {
                 this.emitLine("case ", name, "(", this.swiftType(t), ")");
@@ -1100,10 +1096,10 @@ encoder.dateEncodingStrategy = .formatted(formatter)`);
     }
     emitTopLevelMapAndArrayConvenienceInitializerExtensions(t, name) {
         let extensionSource;
-        if (t instanceof Type_1.ArrayType) {
+        if (t instanceof ArrayType) {
             extensionSource = ["Array where Element == ", name, ".Element"];
         }
-        else if (t instanceof Type_1.MapType) {
+        else if (t instanceof MapType) {
             extensionSource = ["Dictionary where Key == String, Value == ", this.swiftType(t.values)];
         }
         else {
@@ -1202,4 +1198,3 @@ fileprivate func responseDecodable<T: Decodable>(queue: DispatchQueue? = nil, co
         });
     }
 }
-exports.SwiftRenderer = SwiftRenderer;

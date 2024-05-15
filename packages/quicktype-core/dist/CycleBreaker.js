@@ -1,8 +1,5 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.breakCycles = void 0;
-const Support_1 = require("./support/Support");
-function breakCycles(outEdges, chooseBreaker) {
+import { assert, panic } from "./support/Support";
+export function breakCycles(outEdges, chooseBreaker) {
     const numNodes = outEdges.length;
     const inEdges = [];
     const inDegree = [];
@@ -29,14 +26,14 @@ function breakCycles(outEdges, chooseBreaker) {
     }
     function removeNode(node) {
         for (const n of outEdges[node]) {
-            (0, Support_1.assert)(inDegree[n] > 0);
+            assert(inDegree[n] > 0);
             inDegree[n] -= 1;
             if (inDegree[n] === 0) {
                 workList.push(n);
             }
         }
         for (const n of inEdges[node]) {
-            (0, Support_1.assert)(outDegree[n] > 0);
+            assert(outDegree[n] > 0);
             outDegree[n] -= 1;
             if (outDegree[n] === 0) {
                 workList.push(n);
@@ -51,7 +48,7 @@ function breakCycles(outEdges, chooseBreaker) {
                 done[i] = true;
                 continue;
             }
-            (0, Support_1.assert)(inDegree[i] === 0 || outDegree[i] === 0, "Can't have nodes in the worklist with in and out edges");
+            assert(inDegree[i] === 0 || outDegree[i] === 0, "Can't have nodes in the worklist with in and out edges");
             removeNode(i);
             continue;
         }
@@ -74,7 +71,7 @@ function breakCycles(outEdges, chooseBreaker) {
             // the dependee cycle.
             const maybeEdge = outEdges[n].find(x => !done[x]);
             if (maybeEdge === undefined) {
-                return (0, Support_1.panic)("Presumed cycle is not a cycle");
+                return panic("Presumed cycle is not a cycle");
             }
             const maybeFirst = path.indexOf(maybeEdge);
             if (maybeFirst === undefined) {
@@ -86,7 +83,7 @@ function breakCycles(outEdges, chooseBreaker) {
             // We found a cycle - break it
             const cycle = path.slice(maybeFirst);
             const [breakNode, info] = chooseBreaker(cycle);
-            (0, Support_1.assert)(cycle.includes(breakNode), "Breaker chose an invalid node");
+            assert(cycle.includes(breakNode), "Breaker chose an invalid node");
             removeNode(breakNode);
             results.push([breakNode, info]);
             break;
@@ -95,4 +92,3 @@ function breakCycles(outEdges, chooseBreaker) {
     }
     return results;
 }
-exports.breakCycles = breakCycles;

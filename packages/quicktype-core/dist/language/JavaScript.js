@@ -1,39 +1,36 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.JavaScriptRenderer = exports.legalizeName = exports.JavaScriptTargetLanguage = exports.javaScriptOptions = void 0;
-const collection_utils_1 = require("collection-utils");
-const ConvenienceRenderer_1 = require("../ConvenienceRenderer");
-const Naming_1 = require("../Naming");
-const RendererOptions_1 = require("../RendererOptions");
-const Source_1 = require("../Source");
-const Acronyms_1 = require("../support/Acronyms");
-const Converters_1 = require("../support/Converters");
-const Strings_1 = require("../support/Strings");
-const Support_1 = require("../support/Support");
-const TargetLanguage_1 = require("../TargetLanguage");
-const TypeUtils_1 = require("../TypeUtils");
-const JavaScriptUnicodeMaps_1 = require("./JavaScriptUnicodeMaps");
-exports.javaScriptOptions = {
-    acronymStyle: (0, Acronyms_1.acronymOption)(Acronyms_1.AcronymStyleOptions.Pascal),
-    runtimeTypecheck: new RendererOptions_1.BooleanOption("runtime-typecheck", "Verify JSON.parse results at runtime", true),
-    runtimeTypecheckIgnoreUnknownProperties: new RendererOptions_1.BooleanOption("runtime-typecheck-ignore-unknown-properties", "Ignore unknown properties when verifying at runtime", false, "secondary"),
-    converters: (0, Converters_1.convertersOption)(),
-    rawType: new RendererOptions_1.EnumOption("raw-type", "Type of raw input (json by default)", [
+import { arrayIntercalate } from "collection-utils";
+import { ConvenienceRenderer } from "../ConvenienceRenderer";
+import { funPrefixNamer } from "../Naming";
+import { BooleanOption, EnumOption, getOptionValues } from "../RendererOptions";
+import { modifySource } from "../Source";
+import { AcronymStyleOptions, acronymOption, acronymStyle } from "../support/Acronyms";
+import { ConvertersOptions, convertersOption } from "../support/Converters";
+import { allLowerWordStyle, camelCase, capitalize, combineWords, firstUpperWordStyle, splitIntoWords, utf16LegalizeCharacters, utf16StringEscape } from "../support/Strings";
+import { panic } from "../support/Support";
+import { TargetLanguage } from "../TargetLanguage";
+import { directlyReachableSingleNamedType, matchType } from "../TypeUtils";
+import { isES3IdentifierPart, isES3IdentifierStart } from "./JavaScriptUnicodeMaps";
+export const javaScriptOptions = {
+    acronymStyle: acronymOption(AcronymStyleOptions.Pascal),
+    runtimeTypecheck: new BooleanOption("runtime-typecheck", "Verify JSON.parse results at runtime", true),
+    runtimeTypecheckIgnoreUnknownProperties: new BooleanOption("runtime-typecheck-ignore-unknown-properties", "Ignore unknown properties when verifying at runtime", false, "secondary"),
+    converters: convertersOption(),
+    rawType: new EnumOption("raw-type", "Type of raw input (json by default)", [
         ["json", "json"],
         ["any", "any"]
     ], "json", "secondary")
 };
-class JavaScriptTargetLanguage extends TargetLanguage_1.TargetLanguage {
+export class JavaScriptTargetLanguage extends TargetLanguage {
     constructor(displayName = "JavaScript", names = ["javascript", "js", "jsx"], extension = "js") {
         super(displayName, names, extension);
     }
     getOptions() {
         return [
-            exports.javaScriptOptions.runtimeTypecheck,
-            exports.javaScriptOptions.runtimeTypecheckIgnoreUnknownProperties,
-            exports.javaScriptOptions.acronymStyle,
-            exports.javaScriptOptions.converters,
-            exports.javaScriptOptions.rawType
+            javaScriptOptions.runtimeTypecheck,
+            javaScriptOptions.runtimeTypecheckIgnoreUnknownProperties,
+            javaScriptOptions.acronymStyle,
+            javaScriptOptions.converters,
+            javaScriptOptions.rawType
         ];
     }
     get stringTypeMapping() {
@@ -50,24 +47,23 @@ class JavaScriptTargetLanguage extends TargetLanguage_1.TargetLanguage {
         return true;
     }
     makeRenderer(renderContext, untypedOptionValues) {
-        return new JavaScriptRenderer(this, renderContext, (0, RendererOptions_1.getOptionValues)(exports.javaScriptOptions, untypedOptionValues));
+        return new JavaScriptRenderer(this, renderContext, getOptionValues(javaScriptOptions, untypedOptionValues));
     }
 }
-exports.JavaScriptTargetLanguage = JavaScriptTargetLanguage;
-exports.legalizeName = (0, Strings_1.utf16LegalizeCharacters)(JavaScriptUnicodeMaps_1.isES3IdentifierPart);
-const identityNamingFunction = (0, Naming_1.funPrefixNamer)("properties", s => s);
-class JavaScriptRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
+export const legalizeName = utf16LegalizeCharacters(isES3IdentifierPart);
+const identityNamingFunction = funPrefixNamer("properties", s => s);
+export class JavaScriptRenderer extends ConvenienceRenderer {
     constructor(targetLanguage, renderContext, _jsOptions) {
         super(targetLanguage, renderContext);
         this._jsOptions = _jsOptions;
     }
     nameStyle(original, upper) {
-        const acronyms = (0, Acronyms_1.acronymStyle)(this._jsOptions.acronymStyle);
-        const words = (0, Strings_1.splitIntoWords)(original);
-        return (0, Strings_1.combineWords)(words, exports.legalizeName, upper ? Strings_1.firstUpperWordStyle : Strings_1.allLowerWordStyle, Strings_1.firstUpperWordStyle, upper ? (s) => (0, Strings_1.capitalize)(acronyms(s)) : Strings_1.allLowerWordStyle, acronyms, "", JavaScriptUnicodeMaps_1.isES3IdentifierStart);
+        const acronyms = acronymStyle(this._jsOptions.acronymStyle);
+        const words = splitIntoWords(original);
+        return combineWords(words, legalizeName, upper ? firstUpperWordStyle : allLowerWordStyle, firstUpperWordStyle, upper ? (s) => capitalize(acronyms(s)) : allLowerWordStyle, acronyms, "", isES3IdentifierStart);
     }
     makeNamedTypeNamer() {
-        return (0, Naming_1.funPrefixNamer)("types", s => this.nameStyle(s, true));
+        return funPrefixNamer("types", s => this.nameStyle(s, true));
     }
     namerForObjectProperty() {
         return identityNamingFunction;
@@ -76,10 +72,10 @@ class JavaScriptRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return null;
     }
     makeEnumCaseNamer() {
-        return (0, Naming_1.funPrefixNamer)("enum-cases", s => this.nameStyle(s, true));
+        return funPrefixNamer("enum-cases", s => this.nameStyle(s, true));
     }
     namedTypeToNameForTopLevel(type) {
-        return (0, TypeUtils_1.directlyReachableSingleNamedType)(type);
+        return directlyReachableSingleNamedType(type);
     }
     makeNameForProperty(c, className, p, jsonName, _assignedName) {
         // Ignore the assigned name
@@ -92,9 +88,9 @@ class JavaScriptRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         if (["class", "object", "enum"].includes(t.kind)) {
             return ['r("', this.nameForNamedType(t), '")'];
         }
-        return (0, TypeUtils_1.matchType)(t, _anyType => '"any"', _nullType => "null", _boolType => "true", _integerType => "0", _doubleType => "3.14", _stringType => '""', arrayType => ["a(", this.typeMapTypeFor(arrayType.items), ")"], _classType => (0, Support_1.panic)("We handled this above"), mapType => ["m(", this.typeMapTypeFor(mapType.values), ")"], _enumType => (0, Support_1.panic)("We handled this above"), unionType => {
+        return matchType(t, _anyType => '"any"', _nullType => "null", _boolType => "true", _integerType => "0", _doubleType => "3.14", _stringType => '""', arrayType => ["a(", this.typeMapTypeFor(arrayType.items), ")"], _classType => panic("We handled this above"), mapType => ["m(", this.typeMapTypeFor(mapType.values), ")"], _enumType => panic("We handled this above"), unionType => {
             const children = Array.from(unionType.getChildren()).map((type) => this.typeMapTypeFor(type));
-            return ["u(", ...(0, collection_utils_1.arrayIntercalate)(", ", children), ")"];
+            return ["u(", ...arrayIntercalate(", ", children), ")"];
         }, transformedStringType => {
             if (transformedStringType.kind === "date-time") {
                 return "Date";
@@ -123,7 +119,7 @@ class JavaScriptRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 this.emitLine('"', name, '": o([');
                 this.indent(() => {
                     this.forEachClassProperty(t, "none", (propName, jsonName, property) => {
-                        this.emitLine('{ json: "', (0, Strings_1.utf16StringEscape)(jsonName), '", js: "', (0, Source_1.modifySource)(Strings_1.utf16StringEscape, propName), '", typ: ', this.typeMapTypeForProperty(property), " },");
+                        this.emitLine('{ json: "', utf16StringEscape(jsonName), '", js: "', modifySource(utf16StringEscape, propName), '", typ: ', this.typeMapTypeForProperty(property), " },");
                     });
                 });
                 this.emitLine("], ", additional, "),");
@@ -132,7 +128,7 @@ class JavaScriptRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 this.emitLine('"', name, '": [');
                 this.indent(() => {
                     this.forEachEnumCase(e, "none", (_caseName, jsonName) => {
-                        this.emitLine(`"${(0, Strings_1.utf16StringEscape)(jsonName)}",`);
+                        this.emitLine(`"${utf16StringEscape(jsonName)}",`);
                     });
                 });
                 this.emitLine("],");
@@ -146,7 +142,7 @@ class JavaScriptRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return ["function ", this.deserializerFunctionName(name), "(json)"];
     }
     serializerFunctionName(name) {
-        const camelCaseName = (0, Source_1.modifySource)(Strings_1.camelCase, name);
+        const camelCaseName = modifySource(camelCase, name);
         return [camelCaseName, "ToJson"];
     }
     serializerFunctionLine(_t, name) {
@@ -202,7 +198,7 @@ class JavaScriptRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             });
         };
         switch (this._jsOptions.converters) {
-            case Converters_1.ConvertersOptions.AllObjects:
+            case ConvertersOptions.AllObjects:
                 this.forEachObject("interposing", converter);
                 break;
             default:
@@ -398,7 +394,7 @@ function r(name${stringAnnotation}) {
         this.emitUsageImportComment();
         this.emitLine("//");
         this.forEachTopLevel("none", (_t, name) => {
-            const camelCaseName = (0, Source_1.modifySource)(Strings_1.camelCase, name);
+            const camelCaseName = modifySource(camelCase, name);
             this.emitLine("//   const ", camelCaseName, " = Convert.to", name, "(json);");
         });
         if (this._jsOptions.runtimeTypecheck) {
@@ -431,4 +427,3 @@ function r(name${stringAnnotation}) {
         this.emitModuleExports();
     }
 }
-exports.JavaScriptRenderer = JavaScriptRenderer;

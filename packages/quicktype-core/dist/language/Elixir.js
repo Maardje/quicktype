@@ -1,37 +1,11 @@
-"use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.ElixirRenderer = exports.ElixirTargetLanguage = exports.elixirOptions = void 0;
-const unicode = __importStar(require("unicode-properties"));
-const ConvenienceRenderer_1 = require("../ConvenienceRenderer");
-const Naming_1 = require("../Naming");
-const RendererOptions_1 = require("../RendererOptions");
-const Strings_1 = require("../support/Strings");
-const TargetLanguage_1 = require("../TargetLanguage");
-const Type_1 = require("../Type");
-const TypeUtils_1 = require("../TypeUtils");
+import * as unicode from "unicode-properties";
+import { ConvenienceRenderer } from "../ConvenienceRenderer";
+import { Namer } from "../Naming";
+import { BooleanOption, StringOption, getOptionValues } from "../RendererOptions";
+import { allLowerWordStyle, allUpperWordStyle, combineWords, escapeNonPrintableMapper, firstUpperWordStyle, intToHex, isLetterOrUnderscore, isPrintable, legalizeCharacters, splitIntoWords, utf32ConcatMap } from "../support/Strings";
+import { TargetLanguage } from "../TargetLanguage";
+import { ArrayType, ClassType, EnumType, MapType, PrimitiveType, UnionType } from "../Type";
+import { matchType, nullableFromUnion } from "../TypeUtils";
 const forbiddenModuleNames = [
     "Access",
     "Agent",
@@ -133,28 +107,28 @@ const reservedWords = [
     "else"
 ];
 function unicodeEscape(codePoint) {
-    return `\\u{${(0, Strings_1.intToHex)(codePoint, 0)}}`;
+    return `\\u{${intToHex(codePoint, 0)}}`;
 }
 function capitalizeFirstLetter(str) {
     return str.charAt(0).toUpperCase() + str.slice(1);
 }
-const stringEscape = (0, Strings_1.utf32ConcatMap)((0, Strings_1.escapeNonPrintableMapper)(Strings_1.isPrintable, unicodeEscape));
+const stringEscape = utf32ConcatMap(escapeNonPrintableMapper(isPrintable, unicodeEscape));
 function escapeDoubleQuotes(str) {
     return str.replace(/"/g, '\\"');
 }
 function escapeNewLines(str) {
     return str.replace(/\n/g, "\\n");
 }
-exports.elixirOptions = {
-    justTypes: new RendererOptions_1.BooleanOption("just-types", "Plain types only", false),
-    namespace: new RendererOptions_1.StringOption("namespace", "Specify a module namespace", "NAME", "")
+export const elixirOptions = {
+    justTypes: new BooleanOption("just-types", "Plain types only", false),
+    namespace: new StringOption("namespace", "Specify a module namespace", "NAME", "")
 };
-class ElixirTargetLanguage extends TargetLanguage_1.TargetLanguage {
+export class ElixirTargetLanguage extends TargetLanguage {
     constructor() {
         super("Elixir", ["elixir"], "ex");
     }
     getOptions() {
-        return [exports.elixirOptions.justTypes, exports.elixirOptions.namespace];
+        return [elixirOptions.justTypes, elixirOptions.namespace];
     }
     get supportsOptionalClassProperties() {
         return true;
@@ -163,28 +137,27 @@ class ElixirTargetLanguage extends TargetLanguage_1.TargetLanguage {
         return "  ";
     }
     makeRenderer(renderContext, untypedOptionValues) {
-        return new ElixirRenderer(this, renderContext, (0, RendererOptions_1.getOptionValues)(exports.elixirOptions, untypedOptionValues));
+        return new ElixirRenderer(this, renderContext, getOptionValues(elixirOptions, untypedOptionValues));
     }
 }
-exports.ElixirTargetLanguage = ElixirTargetLanguage;
-const isStartCharacter = Strings_1.isLetterOrUnderscore;
+const isStartCharacter = isLetterOrUnderscore;
 function isPartCharacter(utf16Unit) {
     const category = unicode.getCategory(utf16Unit);
     return ["Nd", "Pc", "Mn", "Mc"].includes(category) || isStartCharacter(utf16Unit);
 }
-const legalizeName = (0, Strings_1.legalizeCharacters)(isPartCharacter);
+const legalizeName = legalizeCharacters(isPartCharacter);
 function simpleNameStyle(original, uppercase) {
     if (/^[0-9]+$/.test(original)) {
         original = `${original}N`;
     }
-    const words = (0, Strings_1.splitIntoWords)(original);
-    return (0, Strings_1.combineWords)(words, legalizeName, uppercase ? Strings_1.firstUpperWordStyle : Strings_1.allLowerWordStyle, uppercase ? Strings_1.firstUpperWordStyle : Strings_1.allLowerWordStyle, Strings_1.allUpperWordStyle, Strings_1.allUpperWordStyle, "", isStartCharacter);
+    const words = splitIntoWords(original);
+    return combineWords(words, legalizeName, uppercase ? firstUpperWordStyle : allLowerWordStyle, uppercase ? firstUpperWordStyle : allLowerWordStyle, allUpperWordStyle, allUpperWordStyle, "", isStartCharacter);
 }
 function memberNameStyle(original) {
-    const words = (0, Strings_1.splitIntoWords)(original);
-    return (0, Strings_1.combineWords)(words, legalizeName, Strings_1.allLowerWordStyle, Strings_1.allLowerWordStyle, Strings_1.allLowerWordStyle, Strings_1.allLowerWordStyle, "_", isStartCharacter);
+    const words = splitIntoWords(original);
+    return combineWords(words, legalizeName, allLowerWordStyle, allLowerWordStyle, allLowerWordStyle, allLowerWordStyle, "_", isStartCharacter);
 }
-class ElixirRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
+export class ElixirRenderer extends ConvenienceRenderer {
     constructor(targetLanguage, renderContext, _options) {
         super(targetLanguage, renderContext);
         this._options = _options;
@@ -205,16 +178,16 @@ class ElixirRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return { names: reservedWords, includeGlobalForbidden: true };
     }
     makeNamedTypeNamer() {
-        return new Naming_1.Namer("types", n => simpleNameStyle(n, true), []);
+        return new Namer("types", n => simpleNameStyle(n, true), []);
     }
     namerForObjectProperty() {
-        return new Naming_1.Namer("properties", memberNameStyle, []);
+        return new Namer("properties", memberNameStyle, []);
     }
     makeUnionMemberNamer() {
-        return new Naming_1.Namer("properties", memberNameStyle, []);
+        return new Namer("properties", memberNameStyle, []);
     }
     makeEnumCaseNamer() {
-        return new Naming_1.Namer("enum-cases", n => simpleNameStyle(n, true), []);
+        return new Namer("enum-cases", n => simpleNameStyle(n, true), []);
     }
     nameForNamedTypeWithNamespace(t) {
         if (this._options.namespace) {
@@ -234,7 +207,7 @@ class ElixirRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     }
     elixirType(t, isOptional = false) {
         const optional = isOptional ? " | nil" : "";
-        return (0, TypeUtils_1.matchType)(t, _anyType => ["any()", optional], _nullType => ["nil"], _boolType => ["boolean()", optional], _integerType => ["integer()", optional], _doubleType => ["float()", optional], _stringType => ["String.t()", optional], arrayType => ["[", this.elixirType(arrayType.items), "]", optional], classType => [this.nameForNamedTypeWithNamespace(classType), ".t()", optional], mapType => ["%{String.t() => ", this.elixirType(mapType.values), "}", optional], enumType => [this.nameForNamedTypeWithNamespace(enumType), ".t()", optional], unionType => {
+        return matchType(t, _anyType => ["any()", optional], _nullType => ["nil"], _boolType => ["boolean()", optional], _integerType => ["integer()", optional], _doubleType => ["float()", optional], _stringType => ["String.t()", optional], arrayType => ["[", this.elixirType(arrayType.items), "]", optional], classType => [this.nameForNamedTypeWithNamespace(classType), ".t()", optional], mapType => ["%{String.t() => ", this.elixirType(mapType.values), "}", optional], enumType => [this.nameForNamedTypeWithNamespace(enumType), ".t()", optional], unionType => {
             const children = [...unionType.getChildren()].map(ut => this.elixirType(ut));
             return [
                 children.flatMap((element, index) => (index === children.length - 1 ? element : [element, " | "])),
@@ -243,7 +216,7 @@ class ElixirRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         });
     }
     patternMatchClauseDecode(t, attributeName, suffix = "") {
-        return (0, TypeUtils_1.matchType)(t, _anyType => [], _nullType => ["def decode_", attributeName, suffix, "(value) when is_nil(value), do: value"], _boolType => ["def decode_", attributeName, suffix, "(value) when is_boolean(value), do: value"], _integerType => ["def decode_", attributeName, suffix, "(value) when is_integer(value), do: value"], _doubleType => [
+        return matchType(t, _anyType => [], _nullType => ["def decode_", attributeName, suffix, "(value) when is_nil(value), do: value"], _boolType => ["def decode_", attributeName, suffix, "(value) when is_boolean(value), do: value"], _integerType => ["def decode_", attributeName, suffix, "(value) when is_integer(value), do: value"], _doubleType => [
             "def decode_",
             attributeName,
             suffix,
@@ -280,7 +253,7 @@ class ElixirRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         ], _unionType => []);
     }
     patternMatchClauseEncode(t, attributeName, suffix = "") {
-        return (0, TypeUtils_1.matchType)(t, _anyType => [], _nullType => ["def encode_", attributeName, suffix, "(value) when is_nil(value), do: value"], _boolType => ["def encode_", attributeName, suffix, "(value) when is_boolean(value), do: value"], _integerType => ["def encode_", attributeName, suffix, "(value) when is_integer(value), do: value"], _doubleType => [
+        return matchType(t, _anyType => [], _nullType => ["def encode_", attributeName, suffix, "(value) when is_nil(value), do: value"], _boolType => ["def encode_", attributeName, suffix, "(value) when is_boolean(value), do: value"], _integerType => ["def encode_", attributeName, suffix, "(value) when is_integer(value), do: value"], _doubleType => [
             "def encode_",
             attributeName,
             suffix,
@@ -318,12 +291,12 @@ class ElixirRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     }
     sortAndFilterPatternMatchTypes(types) {
         return types
-            .filter(type => !(type instanceof Type_1.UnionType))
+            .filter(type => !(type instanceof UnionType))
             .sort((a, b) => {
-            if (a instanceof Type_1.ClassType && !(b instanceof Type_1.ClassType)) {
+            if (a instanceof ClassType && !(b instanceof ClassType)) {
                 return -1;
             }
-            else if (b instanceof Type_1.ClassType && !(a instanceof Type_1.ClassType)) {
+            else if (b instanceof ClassType && !(a instanceof ClassType)) {
                 return 1;
             }
             else if (a.kind === "bool" && b.kind !== "bool") {
@@ -332,10 +305,10 @@ class ElixirRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             else if (b.kind === "bool" && a.kind !== "bool") {
                 return 1;
             }
-            else if (a instanceof Type_1.EnumType && !(b instanceof Type_1.EnumType)) {
+            else if (a instanceof EnumType && !(b instanceof EnumType)) {
                 return -1;
             }
-            else if (b instanceof Type_1.EnumType && !(a instanceof Type_1.EnumType)) {
+            else if (b instanceof EnumType && !(a instanceof EnumType)) {
                 return 1;
             }
             else if (a.isPrimitive() && !b.isPrimitive()) {
@@ -380,7 +353,7 @@ class ElixirRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         if (encode) {
             mode = "encode";
         }
-        return (0, TypeUtils_1.matchType)(t, _anyType => [], _nullType => [], _boolType => [], _integerType => [], _doubleType => [], _stringType => [], _arrayType => [], classType => [this.nameForNamedTypeWithNamespace(classType), `.${encode ? "to" : "from"}_map`], _mapType => [], enumType => {
+        return matchType(t, _anyType => [], _nullType => [], _boolType => [], _integerType => [], _doubleType => [], _stringType => [], _arrayType => [], classType => [this.nameForNamedTypeWithNamespace(classType), `.${encode ? "to" : "from"}_map`], _mapType => [], enumType => {
             return [this.nameForNamedTypeWithNamespace(enumType), `.${mode}`];
         }, _unionType => {
             return [`${mode}_`, name, prefix];
@@ -388,15 +361,15 @@ class ElixirRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     }
     fromDynamic(t, jsonName, name, optional = false) {
         const primitive = ['m["', jsonName, '"]'];
-        return (0, TypeUtils_1.matchType)(t, _anyType => primitive, _nullType => primitive, _boolType => primitive, _integerType => primitive, _doubleType => primitive, _stringType => primitive, arrayType => {
+        return matchType(t, _anyType => primitive, _nullType => primitive, _boolType => primitive, _integerType => primitive, _doubleType => primitive, _stringType => primitive, arrayType => {
             const arrayElement = arrayType.items;
-            if (arrayElement instanceof Type_1.ArrayType) {
+            if (arrayElement instanceof ArrayType) {
                 return primitive;
             }
             else if (arrayElement.isPrimitive()) {
                 return primitive;
             }
-            else if (arrayElement instanceof Type_1.MapType) {
+            else if (arrayElement instanceof MapType) {
                 return primitive;
             }
             else {
@@ -430,7 +403,7 @@ class ElixirRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             ")"
         ], mapType => {
             const mapValueTypes = [...mapType.values.getChildren()];
-            const mapValueTypesNotPrimitive = mapValueTypes.filter(type => !(type instanceof Type_1.PrimitiveType));
+            const mapValueTypesNotPrimitive = mapValueTypes.filter(type => !(type instanceof PrimitiveType));
             if (mapValueTypesNotPrimitive.length === 0) {
                 return [primitive];
             }
@@ -444,7 +417,7 @@ class ElixirRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                         "_value(value)} end)"
                     ];
                 }
-                else if (mapType.values instanceof Type_1.EnumType || mapType.values instanceof Type_1.ClassType) {
+                else if (mapType.values instanceof EnumType || mapType.values instanceof ClassType) {
                     return [
                         'm["',
                         jsonName,
@@ -469,9 +442,9 @@ class ElixirRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             if (unionTypes.length === unionPrimitiveTypes.length) {
                 return ['m["', jsonName, '"]'];
             }
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null) {
-                if (nullable instanceof Type_1.ClassType) {
+                if (nullable instanceof ClassType) {
                     return this.fromDynamic(nullable, jsonName, name, true);
                 }
                 const nullableTypes = [...nullable.getChildren()];
@@ -485,15 +458,15 @@ class ElixirRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     }
     toDynamic(t, e, optional = false) {
         const expression = ["struct.", e];
-        return (0, TypeUtils_1.matchType)(t, _anyType => expression, _nullType => expression, _boolType => expression, _integerType => expression, _doubleType => expression, _stringType => expression, arrayType => {
+        return matchType(t, _anyType => expression, _nullType => expression, _boolType => expression, _integerType => expression, _doubleType => expression, _stringType => expression, arrayType => {
             const arrayElement = arrayType.items;
-            if (arrayElement instanceof Type_1.ArrayType) {
+            if (arrayElement instanceof ArrayType) {
                 return expression;
             }
             if (arrayElement.isPrimitive()) {
                 return expression;
             }
-            else if (arrayElement instanceof Type_1.MapType) {
+            else if (arrayElement instanceof MapType) {
                 return expression;
             }
             else {
@@ -534,7 +507,7 @@ class ElixirRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             ")"
         ], mapType => {
             const mapValueTypes = [...mapType.values.getChildren()];
-            const mapValueTypesNotPrimitive = mapValueTypes.filter(type => !(type instanceof Type_1.PrimitiveType));
+            const mapValueTypesNotPrimitive = mapValueTypes.filter(type => !(type instanceof PrimitiveType));
             if (mapValueTypesNotPrimitive.length === 0) {
                 return [expression];
             }
@@ -548,7 +521,7 @@ class ElixirRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                         "_value(value)} end)"
                     ];
                 }
-                else if (mapType.values instanceof Type_1.EnumType || mapType.values instanceof Type_1.ClassType) {
+                else if (mapType.values instanceof EnumType || mapType.values instanceof ClassType) {
                     return [
                         "struct.",
                         e,
@@ -573,9 +546,9 @@ class ElixirRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             if (unionTypes.length === unionPrimitiveTypes.length) {
                 return ["struct.", e];
             }
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null) {
-                if (nullable instanceof Type_1.ClassType) {
+                if (nullable instanceof ClassType) {
                     return this.toDynamic(nullable, e, true);
                 }
                 const nullableTypes = [...nullable.getChildren()];
@@ -665,15 +638,15 @@ class ElixirRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                     if (unionTypesNonNull.length === 1) {
                         let suffix = "";
                         let itemTypes = [];
-                        if (unionTypesNonNull[0] instanceof Type_1.ArrayType) {
+                        if (unionTypesNonNull[0] instanceof ArrayType) {
                             suffix = "_element";
                             itemTypes = [...unionTypesNonNull[0].getChildren()];
                         }
-                        else if (unionTypesNonNull[0] instanceof Type_1.MapType) {
+                        else if (unionTypesNonNull[0] instanceof MapType) {
                             suffix = "_value";
                             itemTypes = [...unionTypesNonNull[0].getChildren()];
                         }
-                        if (itemTypes.length === 1 && itemTypes[0] instanceof Type_1.UnionType) {
+                        if (itemTypes.length === 1 && itemTypes[0] instanceof UnionType) {
                             itemTypes = [...itemTypes[0].getChildren()];
                         }
                         this.emitPatternMatches(itemTypes, name, this.nameForNamedTypeWithNamespace(c), suffix, p.isOptional);
@@ -684,7 +657,7 @@ class ElixirRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 }
                 else if (p.type.kind === "array") {
                     const arrayType = p.type;
-                    if (arrayType.items instanceof Type_1.UnionType) {
+                    if (arrayType.items instanceof UnionType) {
                         const unionType = arrayType.items;
                         const typesInUnion = [...unionType.getChildren()];
                         this.emitPatternMatches(typesInUnion, name, this.nameForNamedTypeWithNamespace(c), "_element");
@@ -692,7 +665,7 @@ class ElixirRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 }
                 else if (p.type.kind === "map") {
                     const mapType = p.type;
-                    if (mapType.values instanceof Type_1.UnionType) {
+                    if (mapType.values instanceof UnionType) {
                         const unionType = mapType.values;
                         const typesInUnion = [...unionType.getChildren()];
                         this.emitPatternMatches(typesInUnion, name, this.nameForNamedTypeWithNamespace(c), "_value");
@@ -852,7 +825,7 @@ end`);
                     if (isTopLevelArray) {
                         const arrayElement = topLevel.items;
                         let isUnion = false;
-                        if (arrayElement instanceof Type_1.UnionType) {
+                        if (arrayElement instanceof UnionType) {
                             this.emitPatternMatches([...arrayElement.getChildren()], "element", name);
                             isUnion = true;
                         }
@@ -885,4 +858,3 @@ end`);
         }
     }
 }
-exports.ElixirRenderer = ElixirRenderer;

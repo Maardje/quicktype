@@ -1,69 +1,63 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.SystemTextJsonCSharpRenderer = exports.systemTextJsonCSharpOptions = exports.NewtonsoftCSharpRenderer = exports.newtonsoftCSharpOptions = exports.CSharpRenderer = exports.CSharpTargetLanguage = exports.cSharpOptions = exports.AccessModifier = exports.Framework = void 0;
-const collection_utils_1 = require("collection-utils");
-const unicode_properties_1 = __importDefault(require("unicode-properties"));
-const Annotation_1 = require("../Annotation");
-const Constraints_1 = require("../attributes/Constraints");
-const ConvenienceRenderer_1 = require("../ConvenienceRenderer");
-const Naming_1 = require("../Naming");
-const RendererOptions_1 = require("../RendererOptions");
-const Source_1 = require("../Source");
-const Strings_1 = require("../support/Strings");
-const Support_1 = require("../support/Support");
-const TargetLanguage_1 = require("../TargetLanguage");
-const Transformers_1 = require("../Transformers");
-const Type_1 = require("../Type");
-const TypeUtils_1 = require("../TypeUtils");
-var Framework;
+import { arrayIntercalate } from "collection-utils";
+import unicode from "unicode-properties";
+import { anyTypeIssueAnnotation, nullTypeIssueAnnotation } from "../Annotation";
+import { minMaxLengthForType, minMaxValueForType } from "../attributes/Constraints";
+import { ConvenienceRenderer, inferredNameOrder } from "../ConvenienceRenderer";
+import { DependencyName, SimpleName, funPrefixNamer } from "../Naming";
+import { BooleanOption, EnumOption, StringOption, getOptionValues } from "../RendererOptions";
+import { maybeAnnotated, modifySource } from "../Source";
+import { camelCase, combineWords, firstUpperWordStyle, splitIntoWords, utf16LegalizeCharacters, utf16StringEscape } from "../support/Strings";
+import { assert, assertNever, defined, panic } from "../support/Support";
+import { TargetLanguage } from "../TargetLanguage";
+import { ArrayDecodingTransformer, ArrayEncodingTransformer, ChoiceTransformer, DecodingChoiceTransformer, DecodingTransformer, EncodingTransformer, MinMaxLengthCheckTransformer, MinMaxValueTransformer, ParseStringTransformer, StringMatchTransformer, StringProducerTransformer, StringifyTransformer, UnionInstantiationTransformer, UnionMemberMatchTransformer, followTargetType, transformationForType } from "../Transformers";
+import { ArrayType, ClassType, EnumType, UnionType } from "../Type";
+import { directlyReachableSingleNamedType, matchType, nullableFromUnion, removeNullFromUnion } from "../TypeUtils";
+export var Framework;
 (function (Framework) {
     Framework["Newtonsoft"] = "Newtonsoft";
     Framework["SystemTextJson"] = "SystemTextJson";
-})(Framework = exports.Framework || (exports.Framework = {}));
-var AccessModifier;
+})(Framework || (Framework = {}));
+export var AccessModifier;
 (function (AccessModifier) {
     AccessModifier["None"] = "None";
     AccessModifier["Public"] = "Public";
     AccessModifier["Internal"] = "Internal";
-})(AccessModifier = exports.AccessModifier || (exports.AccessModifier = {}));
+})(AccessModifier || (AccessModifier = {}));
 function noFollow(t) {
     return t;
 }
 function needTransformerForType(t) {
-    if (t instanceof Type_1.UnionType) {
-        const maybeNullable = (0, TypeUtils_1.nullableFromUnion)(t);
+    if (t instanceof UnionType) {
+        const maybeNullable = nullableFromUnion(t);
         if (maybeNullable === null)
             return "automatic";
         if (needTransformerForType(maybeNullable) === "manual")
             return "nullable";
         return "none";
     }
-    if (t instanceof Type_1.ArrayType) {
+    if (t instanceof ArrayType) {
         const itemsNeed = needTransformerForType(t.items);
         if (itemsNeed === "manual" || itemsNeed === "nullable")
             return "automatic";
         return "none";
     }
-    if (t instanceof Type_1.EnumType)
+    if (t instanceof EnumType)
         return "automatic";
     if (t.kind === "double")
-        return (0, Constraints_1.minMaxValueForType)(t) !== undefined ? "manual" : "none";
+        return minMaxValueForType(t) !== undefined ? "manual" : "none";
     if (t.kind === "integer-string" || t.kind === "bool-string")
         return "manual";
     if (t.kind === "string") {
-        return (0, Constraints_1.minMaxLengthForType)(t) !== undefined ? "manual" : "none";
+        return minMaxLengthForType(t) !== undefined ? "manual" : "none";
     }
     return "none";
 }
 function alwaysApplyTransformation(xf) {
     const t = xf.targetType;
-    if (t instanceof Type_1.EnumType)
+    if (t instanceof EnumType)
         return true;
-    if (t instanceof Type_1.UnionType)
-        return (0, TypeUtils_1.nullableFromUnion)(t) === null;
+    if (t instanceof UnionType)
+        return nullableFromUnion(t) === null;
     return false;
 }
 /**
@@ -78,68 +72,68 @@ function csTypeForTransformedStringType(t) {
         case "uri":
             return "Uri";
         default:
-            return (0, Support_1.panic)(`Transformed string type ${t.kind} not supported`);
+            return panic(`Transformed string type ${t.kind} not supported`);
     }
 }
-exports.cSharpOptions = {
-    framework: new RendererOptions_1.EnumOption("framework", "Serialization framework", [
+export const cSharpOptions = {
+    framework: new EnumOption("framework", "Serialization framework", [
         ["NewtonSoft", Framework.Newtonsoft],
         ["SystemTextJson", Framework.SystemTextJson]
     ], "NewtonSoft"),
-    useList: new RendererOptions_1.EnumOption("array-type", "Use T[] or List<T>", [
+    useList: new EnumOption("array-type", "Use T[] or List<T>", [
         ["array", false],
         ["list", true]
     ]),
-    dense: new RendererOptions_1.EnumOption("density", "Property density", [
+    dense: new EnumOption("density", "Property density", [
         ["normal", false],
         ["dense", true]
     ], "normal", "secondary"),
     // FIXME: Do this via a configurable named eventually.
-    namespace: new RendererOptions_1.StringOption("namespace", "Generated namespace", "NAME", "QuickType"),
-    version: new RendererOptions_1.EnumOption("csharp-version", "C# version", [
+    namespace: new StringOption("namespace", "Generated namespace", "NAME", "QuickType"),
+    version: new EnumOption("csharp-version", "C# version", [
         ["5", 5],
         ["6", 6]
     ], "6", "secondary"),
-    virtual: new RendererOptions_1.BooleanOption("virtual", "Generate virtual properties", false),
-    typeForAny: new RendererOptions_1.EnumOption("any-type", 'Type to use for "any"', [
+    virtual: new BooleanOption("virtual", "Generate virtual properties", false),
+    typeForAny: new EnumOption("any-type", 'Type to use for "any"', [
         ["object", "object"],
         ["dynamic", "dynamic"]
     ], "object", "secondary"),
-    useDecimal: new RendererOptions_1.EnumOption("number-type", "Type to use for numbers", [
+    useDecimal: new EnumOption("number-type", "Type to use for numbers", [
         ["double", false],
         ["decimal", true]
     ], "double", "secondary"),
-    features: new RendererOptions_1.EnumOption("features", "Output features", [
+    features: new EnumOption("features", "Output features", [
         ["complete", { namespaces: true, helpers: true, attributes: true }],
         ["attributes-only", { namespaces: true, helpers: false, attributes: true }],
         ["just-types-and-namespace", { namespaces: true, helpers: false, attributes: false }],
         ["just-types", { namespaces: true, helpers: false, attributes: false }]
     ]),
-    baseclass: new RendererOptions_1.EnumOption("base-class", "Base class", [
+    baseclass: new EnumOption("base-class", "Base class", [
         ["EntityData", "EntityData"],
         ["Object", undefined]
     ], "Object", "secondary"),
-    checkRequired: new RendererOptions_1.BooleanOption("check-required", "Fail if required properties are missing", false),
-    keepPropertyName: new RendererOptions_1.BooleanOption("keep-property-name", "Keep original field name generate", false)
+    checkRequired: new BooleanOption("check-required", "Fail if required properties are missing", false),
+    keepPropertyName: new BooleanOption("keep-property-name", "Keep original field name generate", false)
 };
-class CSharpTargetLanguage extends TargetLanguage_1.TargetLanguage {
+export class CSharpTargetLanguage extends TargetLanguage {
     constructor() {
         super("C#", ["cs", "csharp"], "cs");
     }
     getOptions() {
         return [
-            exports.cSharpOptions.framework,
-            exports.cSharpOptions.namespace,
-            exports.cSharpOptions.version,
-            exports.cSharpOptions.dense,
-            exports.cSharpOptions.useList,
-            exports.cSharpOptions.useDecimal,
-            exports.cSharpOptions.typeForAny,
-            exports.cSharpOptions.virtual,
-            exports.cSharpOptions.features,
-            exports.cSharpOptions.baseclass,
-            exports.cSharpOptions.checkRequired,
-            exports.cSharpOptions.keepPropertyName
+            cSharpOptions.framework,
+            cSharpOptions.namespace,
+            cSharpOptions.version,
+            cSharpOptions.dense,
+            cSharpOptions.useList,
+            cSharpOptions.useDecimal,
+            cSharpOptions.typeForAny,
+            cSharpOptions.virtual,
+            cSharpOptions.features,
+            cSharpOptions.baseclass,
+            cSharpOptions.checkRequired,
+            cSharpOptions.keepPropertyName
         ];
     }
     get stringTypeMapping() {
@@ -164,41 +158,40 @@ class CSharpTargetLanguage extends TargetLanguage_1.TargetLanguage {
         return need !== "none" && need !== "nullable";
     }
     makeRenderer(renderContext, untypedOptionValues) {
-        const options = (0, RendererOptions_1.getOptionValues)(exports.cSharpOptions, untypedOptionValues);
+        const options = getOptionValues(cSharpOptions, untypedOptionValues);
         switch (options.framework) {
             case Framework.Newtonsoft:
-                return new NewtonsoftCSharpRenderer(this, renderContext, (0, RendererOptions_1.getOptionValues)(exports.newtonsoftCSharpOptions, untypedOptionValues));
+                return new NewtonsoftCSharpRenderer(this, renderContext, getOptionValues(newtonsoftCSharpOptions, untypedOptionValues));
             case Framework.SystemTextJson:
-                return new SystemTextJsonCSharpRenderer(this, renderContext, (0, RendererOptions_1.getOptionValues)(exports.systemTextJsonCSharpOptions, untypedOptionValues));
+                return new SystemTextJsonCSharpRenderer(this, renderContext, getOptionValues(systemTextJsonCSharpOptions, untypedOptionValues));
             default:
-                return (0, Support_1.assertNever)(options.framework);
+                return assertNever(options.framework);
         }
     }
 }
-exports.CSharpTargetLanguage = CSharpTargetLanguage;
-const namingFunction = (0, Naming_1.funPrefixNamer)("namer", csNameStyle);
-const namingFunctionKeep = (0, Naming_1.funPrefixNamer)("namerKeep", csNameStyleKeep);
+const namingFunction = funPrefixNamer("namer", csNameStyle);
+const namingFunctionKeep = funPrefixNamer("namerKeep", csNameStyleKeep);
 // FIXME: Make a Named?
 const denseJsonPropertyName = "J";
 const denseRequiredEnumName = "R";
 const denseNullValueHandlingEnumName = "N";
 function isStartCharacter(utf16Unit) {
-    if (unicode_properties_1.default.isAlphabetic(utf16Unit)) {
+    if (unicode.isAlphabetic(utf16Unit)) {
         return true;
     }
     return utf16Unit === 0x5f; // underscore
 }
 function isPartCharacter(utf16Unit) {
-    const category = unicode_properties_1.default.getCategory(utf16Unit);
+    const category = unicode.getCategory(utf16Unit);
     if (["Nd", "Pc", "Mn", "Mc"].includes(category)) {
         return true;
     }
     return isStartCharacter(utf16Unit);
 }
-const legalizeName = (0, Strings_1.utf16LegalizeCharacters)(isPartCharacter);
+const legalizeName = utf16LegalizeCharacters(isPartCharacter);
 function csNameStyle(original) {
-    const words = (0, Strings_1.splitIntoWords)(original);
-    return (0, Strings_1.combineWords)(words, legalizeName, Strings_1.firstUpperWordStyle, Strings_1.firstUpperWordStyle, Strings_1.firstUpperWordStyle, Strings_1.firstUpperWordStyle, "", isStartCharacter);
+    const words = splitIntoWords(original);
+    return combineWords(words, legalizeName, firstUpperWordStyle, firstUpperWordStyle, firstUpperWordStyle, firstUpperWordStyle, "", isStartCharacter);
 }
 function csNameStyleKeep(original) {
     const keywords = [
@@ -286,16 +279,16 @@ function csNameStyleKeep(original) {
             isAcronym: false
         }
     ];
-    const result = (0, Strings_1.combineWords)(words, legalizeName, x => x, x => x, x => x, x => x, "", isStartCharacter);
+    const result = combineWords(words, legalizeName, x => x, x => x, x => x, x => x, "", isStartCharacter);
     return keywords.includes(result) ? "@" + result : result;
 }
 function isValueType(t) {
-    if (t instanceof Type_1.UnionType) {
-        return (0, TypeUtils_1.nullableFromUnion)(t) === null;
+    if (t instanceof UnionType) {
+        return nullableFromUnion(t) === null;
     }
     return ["integer", "double", "bool", "enum", "date-time", "uuid"].includes(t.kind);
 }
-class CSharpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
+export class CSharpRenderer extends ConvenienceRenderer {
     constructor(targetLanguage, renderContext, _csOptions) {
         super(targetLanguage, renderContext);
         this._csOptions = _csOptions;
@@ -334,13 +327,13 @@ class CSharpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return namingFunction;
     }
     unionNeedsName(u) {
-        return (0, TypeUtils_1.nullableFromUnion)(u) === null;
+        return nullableFromUnion(u) === null;
     }
     namedTypeToNameForTopLevel(type) {
         // If the top-level type doesn't contain any classes or unions
         // we have to define a class just for the `FromJson` method, in
         // emitFromJsonForTopLevel.
-        return (0, TypeUtils_1.directlyReachableSingleNamedType)(type);
+        return directlyReachableSingleNamedType(type);
     }
     emitBlock(f, semicolon = false) {
         this.emitLine("{");
@@ -350,9 +343,9 @@ class CSharpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     get doubleType() {
         return this._csOptions.useDecimal ? "decimal" : "double";
     }
-    csType(t, follow = Transformers_1.followTargetType, withIssues = false) {
+    csType(t, follow = followTargetType, withIssues = false) {
         const actualType = follow(t);
-        return (0, TypeUtils_1.matchType)(actualType, _anyType => (0, Source_1.maybeAnnotated)(withIssues, Annotation_1.anyTypeIssueAnnotation, this._csOptions.typeForAny), _nullType => (0, Source_1.maybeAnnotated)(withIssues, Annotation_1.nullTypeIssueAnnotation, this._csOptions.typeForAny), _boolType => "bool", _integerType => "long", _doubleType => this.doubleType, _stringType => "string", arrayType => {
+        return matchType(actualType, _anyType => maybeAnnotated(withIssues, anyTypeIssueAnnotation, this._csOptions.typeForAny), _nullType => maybeAnnotated(withIssues, nullTypeIssueAnnotation, this._csOptions.typeForAny), _boolType => "bool", _integerType => "long", _doubleType => this.doubleType, _stringType => "string", arrayType => {
             const itemsType = this.csType(arrayType.items, follow, withIssues);
             if (this._csOptions.useList) {
                 return ["List<", itemsType, ">"];
@@ -361,14 +354,14 @@ class CSharpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
                 return [itemsType, "[]"];
             }
         }, classType => this.nameForNamedType(classType), mapType => ["Dictionary<string, ", this.csType(mapType.values, follow, withIssues), ">"], enumType => this.nameForNamedType(enumType), unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null)
                 return this.nullableCSType(nullable, noFollow);
             return this.nameForNamedType(unionType);
         }, transformedStringType => csTypeForTransformedStringType(transformedStringType));
     }
-    nullableCSType(t, follow = Transformers_1.followTargetType, withIssues = false) {
-        t = (0, Transformers_1.followTargetType)(t);
+    nullableCSType(t, follow = followTargetType, withIssues = false) {
+        t = followTargetType(t);
         const csType = this.csType(t, follow, withIssues);
         if (isValueType(t)) {
             return [csType, "?"];
@@ -406,8 +399,8 @@ class CSharpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     propertyDefinition(property, name, _c, _jsonName) {
         const t = property.type;
         const csType = property.isOptional
-            ? this.nullableCSType(t, Transformers_1.followTargetType, true)
-            : this.csType(t, Transformers_1.followTargetType, true);
+            ? this.nullableCSType(t, followTargetType, true)
+            : this.csType(t, followTargetType, true);
         const propertyArray = ["public "];
         if (this._csOptions.virtual)
             propertyArray.push("virtual ");
@@ -468,7 +461,7 @@ class CSharpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         });
     }
     emitUnionDefinition(u, unionName) {
-        const nonNulls = (0, TypeUtils_1.removeNullFromUnion)(u, true)[1];
+        const nonNulls = removeNullFromUnion(u, true)[1];
         this.emitType(this.descriptionForType(u), AccessModifier.Public, "partial struct", unionName, this.baseclassForType(u), () => {
             this.forEachUnionMember(u, nonNulls, "none", null, (fieldName, t) => {
                 const csType = this.nullableCSType(t);
@@ -486,7 +479,7 @@ class CSharpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             });
             if (u.findMember("null") === undefined)
                 return;
-            this.emitExpressionMember("public bool IsNull", (0, collection_utils_1.arrayIntercalate)(" && ", nullTests), true);
+            this.emitExpressionMember("public bool IsNull", arrayIntercalate(" && ", nullTests), true);
         });
     }
     emitEnumDefinition(e, enumName) {
@@ -518,7 +511,7 @@ class CSharpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         }
     }
     emitTypeSwitch(types, condition, withBlock, withReturn, f) {
-        (0, Support_1.assert)(!withReturn || withBlock, "Can only have return with block");
+        assert(!withReturn || withBlock, "Can only have return with block");
         for (const t of types) {
             this.emitLine("if (", condition(t), ")");
             if (withBlock) {
@@ -582,9 +575,8 @@ class CSharpRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         this.emitDefaultFollowingComments();
     }
 }
-exports.CSharpRenderer = CSharpRenderer;
-exports.newtonsoftCSharpOptions = Object.assign({}, exports.cSharpOptions, {});
-class NewtonsoftCSharpRenderer extends CSharpRenderer {
+export const newtonsoftCSharpOptions = Object.assign({}, cSharpOptions, {});
+export class NewtonsoftCSharpRenderer extends CSharpRenderer {
     constructor(targetLanguage, renderContext, _options) {
         super(targetLanguage, renderContext, _options);
         this._options = _options;
@@ -623,17 +615,17 @@ class NewtonsoftCSharpRenderer extends CSharpRenderer {
     makeNameForTransformation(xf, typeName) {
         if (typeName === undefined) {
             let xfer = xf.transformer;
-            if (xfer instanceof Transformers_1.DecodingTransformer && xfer.consumer !== undefined) {
+            if (xfer instanceof DecodingTransformer && xfer.consumer !== undefined) {
                 xfer = xfer.consumer;
             }
-            return new Naming_1.SimpleName([`${xfer.kind}_converter`], namingFunction, ConvenienceRenderer_1.inferredNameOrder + 30);
+            return new SimpleName([`${xfer.kind}_converter`], namingFunction, inferredNameOrder + 30);
         }
-        return new Naming_1.DependencyName(namingFunction, typeName.order + 30, lookup => `${lookup(typeName)}_converter`);
+        return new DependencyName(namingFunction, typeName.order + 30, lookup => `${lookup(typeName)}_converter`);
     }
     makeNamedTypeDependencyNames(t, name) {
-        if (!(t instanceof Type_1.EnumType))
+        if (!(t instanceof EnumType))
             return [];
-        const extensionsName = new Naming_1.DependencyName(namingFunction, name.order + 30, lookup => `${lookup(name)}_extensions`);
+        const extensionsName = new DependencyName(namingFunction, name.order + 30, lookup => `${lookup(name)}_extensions`);
         this._enumExtensionsNames.set(name, extensionsName);
         return [extensionsName];
     }
@@ -669,37 +661,37 @@ class NewtonsoftCSharpRenderer extends CSharpRenderer {
         this.emitLine("//");
         this.forEachTopLevel("none", (t, topLevelName) => {
             let rhs;
-            if (t instanceof Type_1.EnumType) {
+            if (t instanceof EnumType) {
                 rhs = ["JsonConvert.DeserializeObject<", topLevelName, ">(jsonString)"];
             }
             else {
                 rhs = [topLevelName, ".FromJson(jsonString)"];
             }
-            this.emitLine("//    var ", (0, Source_1.modifySource)(Strings_1.camelCase, topLevelName), " = ", rhs, ";");
+            this.emitLine("//    var ", modifySource(camelCase, topLevelName), " = ", rhs, ";");
         });
     }
     converterForType(t) {
-        let xf = (0, Transformers_1.transformationForType)(t);
-        if (xf === undefined && t instanceof Type_1.UnionType) {
-            const maybeNullable = (0, TypeUtils_1.nullableFromUnion)(t);
+        let xf = transformationForType(t);
+        if (xf === undefined && t instanceof UnionType) {
+            const maybeNullable = nullableFromUnion(t);
             if (maybeNullable !== null) {
                 t = maybeNullable;
-                xf = (0, Transformers_1.transformationForType)(t);
+                xf = transformationForType(t);
             }
         }
         if (xf === undefined)
             return undefined;
         if (alwaysApplyTransformation(xf))
             return undefined;
-        return (0, Support_1.defined)(this.nameForTransformation(t));
+        return defined(this.nameForTransformation(t));
     }
     attributesForProperty(property, _name, _c, jsonName) {
         if (!this._needAttributes)
             return undefined;
         const attributes = [];
         const jsonProperty = this._options.dense ? denseJsonPropertyName : "JsonProperty";
-        const escapedName = (0, Strings_1.utf16StringEscape)(jsonName);
-        const isNullable = (0, Transformers_1.followTargetType)(property.type).isNullable;
+        const escapedName = utf16StringEscape(jsonName);
+        const isNullable = followTargetType(property.type).isNullable;
         const isOptional = property.isOptional;
         const requiredClass = this._options.dense ? "R" : "Required";
         const nullValueHandlingClass = this._options.dense ? "N" : "NullValueHandling";
@@ -732,14 +724,14 @@ class NewtonsoftCSharpRenderer extends CSharpRenderer {
         return t.kind === "any" || t.kind === "none" ? "object" : this.csType(t);
     }
     emitFromJsonForTopLevel(t, name) {
-        if (t instanceof Type_1.EnumType)
+        if (t instanceof EnumType)
             return;
         let partial;
         let typeKind;
         const definedType = this.namedTypeToNameForTopLevel(t);
         if (definedType !== undefined) {
             partial = "partial ";
-            typeKind = definedType instanceof Type_1.ClassType ? "class" : "struct";
+            typeKind = definedType instanceof ClassType ? "class" : "struct";
         }
         else {
             partial = "";
@@ -809,7 +801,7 @@ class NewtonsoftCSharpRenderer extends CSharpRenderer {
                 this.emitLine("{");
                 this.indent(() => {
                     for (const [t, converter] of this.typesWithNamedTransformations) {
-                        if (alwaysApplyTransformation((0, Support_1.defined)((0, Transformers_1.transformationForType)(t)))) {
+                        if (alwaysApplyTransformation(defined(transformationForType(t)))) {
                             this.emitLine(this.converterObject(converter), ",");
                         }
                     }
@@ -842,7 +834,7 @@ class NewtonsoftCSharpRenderer extends CSharpRenderer {
         }
     }
     emitDecodeTransformer(xfer, targetType, emitFinish, variableName = "value") {
-        if (xfer instanceof Transformers_1.DecodingTransformer) {
+        if (xfer instanceof DecodingTransformer) {
             const source = xfer.sourceType;
             const converter = this.converterForType(targetType);
             if (converter !== undefined) {
@@ -856,10 +848,10 @@ class NewtonsoftCSharpRenderer extends CSharpRenderer {
             }
             return this.emitConsume(variableName, xfer.consumer, targetType, emitFinish);
         }
-        else if (xfer instanceof Transformers_1.ArrayDecodingTransformer) {
+        else if (xfer instanceof ArrayDecodingTransformer) {
             // FIXME: Consume StartArray
-            if (!(targetType instanceof Type_1.ArrayType)) {
-                return (0, Support_1.panic)("Array decoding must produce an array type");
+            if (!(targetType instanceof ArrayType)) {
+                return panic("Array decoding must produce an array type");
             }
             // FIXME: handle EOF
             this.emitLine("reader.Read();");
@@ -877,7 +869,7 @@ class NewtonsoftCSharpRenderer extends CSharpRenderer {
             emitFinish(result);
             return true;
         }
-        else if (xfer instanceof Transformers_1.DecodingChoiceTransformer) {
+        else if (xfer instanceof DecodingChoiceTransformer) {
             this.emitDecoderSwitch(() => {
                 const nullTransformer = xfer.nullTransformer;
                 if (nullTransformer !== undefined) {
@@ -899,33 +891,33 @@ class NewtonsoftCSharpRenderer extends CSharpRenderer {
             return false;
         }
         else {
-            return (0, Support_1.panic)("Unknown transformer");
+            return panic("Unknown transformer");
         }
     }
     stringCaseValue(t, stringCase) {
         if (t.kind === "string") {
-            return ['"', (0, Strings_1.utf16StringEscape)(stringCase), '"'];
+            return ['"', utf16StringEscape(stringCase), '"'];
         }
-        else if (t instanceof Type_1.EnumType) {
+        else if (t instanceof EnumType) {
             return [this.nameForNamedType(t), ".", this.nameForEnumCase(t, stringCase)];
         }
-        return (0, Support_1.panic)(`Type ${t.kind} does not have string cases`);
+        return panic(`Type ${t.kind} does not have string cases`);
     }
     emitTransformer(variable, xfer, targetType, emitFinish) {
         function directTargetType(continuation) {
             if (continuation === undefined) {
                 return targetType;
             }
-            return (0, Transformers_1.followTargetType)(continuation.sourceType);
+            return followTargetType(continuation.sourceType);
         }
-        if (xfer instanceof Transformers_1.ChoiceTransformer) {
+        if (xfer instanceof ChoiceTransformer) {
             const caseXfers = xfer.transformers;
-            if (caseXfers.length > 1 && caseXfers.every(caseXfer => caseXfer instanceof Transformers_1.StringMatchTransformer)) {
+            if (caseXfers.length > 1 && caseXfers.every(caseXfer => caseXfer instanceof StringMatchTransformer)) {
                 this.emitLine("switch (", variable, ")");
                 this.emitBlock(() => {
                     for (const caseXfer of caseXfers) {
                         const matchXfer = caseXfer;
-                        const value = this.stringCaseValue((0, Transformers_1.followTargetType)(matchXfer.sourceType), matchXfer.stringCase);
+                        const value = this.stringCaseValue(followTargetType(matchXfer.sourceType), matchXfer.stringCase);
                         this.emitLine("case ", value, ":");
                         this.indent(() => {
                             const allDone = this.emitTransformer(variable, matchXfer.transformer, targetType, emitFinish);
@@ -944,9 +936,9 @@ class NewtonsoftCSharpRenderer extends CSharpRenderer {
                 }
             }
         }
-        else if (xfer instanceof Transformers_1.UnionMemberMatchTransformer) {
+        else if (xfer instanceof UnionMemberMatchTransformer) {
             const memberType = xfer.memberType;
-            const maybeNullable = (0, TypeUtils_1.nullableFromUnion)(xfer.sourceType);
+            const maybeNullable = nullableFromUnion(xfer.sourceType);
             let test;
             let member;
             if (maybeNullable !== null) {
@@ -974,12 +966,12 @@ class NewtonsoftCSharpRenderer extends CSharpRenderer {
             this.emitLine("if (", test, ")");
             this.emitBlock(() => this.emitTransformer(member, xfer.transformer, targetType, emitFinish));
         }
-        else if (xfer instanceof Transformers_1.StringMatchTransformer) {
-            const value = this.stringCaseValue((0, Transformers_1.followTargetType)(xfer.sourceType), xfer.stringCase);
+        else if (xfer instanceof StringMatchTransformer) {
+            const value = this.stringCaseValue(followTargetType(xfer.sourceType), xfer.stringCase);
             this.emitLine("if (", variable, " == ", value, ")");
             this.emitBlock(() => this.emitTransformer(variable, xfer.transformer, targetType, emitFinish));
         }
-        else if (xfer instanceof Transformers_1.EncodingTransformer) {
+        else if (xfer instanceof EncodingTransformer) {
             const converter = this.converterForType(xfer.sourceType);
             if (converter !== undefined) {
                 this.emitLine("var converter = ", this.converterObject(converter), ";");
@@ -991,7 +983,7 @@ class NewtonsoftCSharpRenderer extends CSharpRenderer {
             emitFinish([]);
             return true;
         }
-        else if (xfer instanceof Transformers_1.ArrayEncodingTransformer) {
+        else if (xfer instanceof ArrayEncodingTransformer) {
             this.emitLine("writer.WriteStartArray();");
             const itemVariable = "arrayItem";
             this.emitLine("foreach (var ", itemVariable, " in ", variable, ")");
@@ -1004,7 +996,7 @@ class NewtonsoftCSharpRenderer extends CSharpRenderer {
             emitFinish([]);
             return true;
         }
-        else if (xfer instanceof Transformers_1.ParseStringTransformer) {
+        else if (xfer instanceof ParseStringTransformer) {
             const immediateTargetType = xfer.consumer === undefined ? targetType : xfer.consumer.sourceType;
             switch (immediateTargetType.kind) {
                 case "date-time":
@@ -1036,10 +1028,10 @@ class NewtonsoftCSharpRenderer extends CSharpRenderer {
                     this.emitBlock(() => this.emitConsume("b", xfer.consumer, targetType, emitFinish));
                     break;
                 default:
-                    return (0, Support_1.panic)(`Parsing string to ${immediateTargetType.kind} not supported`);
+                    return panic(`Parsing string to ${immediateTargetType.kind} not supported`);
             }
         }
-        else if (xfer instanceof Transformers_1.StringifyTransformer) {
+        else if (xfer instanceof StringifyTransformer) {
             switch (xfer.sourceType.kind) {
                 case "date-time":
                     return this.emitConsume([variable, '.ToString("o", System.Globalization.CultureInfo.InvariantCulture)'], xfer.consumer, targetType, emitFinish);
@@ -1052,14 +1044,14 @@ class NewtonsoftCSharpRenderer extends CSharpRenderer {
                     this.emitLine("var boolString = ", variable, ' ? "true" : "false";');
                     return this.emitConsume("boolString", xfer.consumer, targetType, emitFinish);
                 default:
-                    return (0, Support_1.panic)(`Stringifying ${xfer.sourceType.kind} not supported`);
+                    return panic(`Stringifying ${xfer.sourceType.kind} not supported`);
             }
         }
-        else if (xfer instanceof Transformers_1.StringProducerTransformer) {
+        else if (xfer instanceof StringProducerTransformer) {
             const value = this.stringCaseValue(directTargetType(xfer.consumer), xfer.result);
             return this.emitConsume(value, xfer.consumer, targetType, emitFinish);
         }
-        else if (xfer instanceof Transformers_1.MinMaxLengthCheckTransformer) {
+        else if (xfer instanceof MinMaxLengthCheckTransformer) {
             const min = xfer.minLength;
             const max = xfer.maxLength;
             const conditions = [];
@@ -1069,11 +1061,11 @@ class NewtonsoftCSharpRenderer extends CSharpRenderer {
             if (max !== undefined) {
                 conditions.push([variable, ".Length <= ", max.toString()]);
             }
-            this.emitLine("if (", (0, collection_utils_1.arrayIntercalate)([" && "], conditions), ")");
+            this.emitLine("if (", arrayIntercalate([" && "], conditions), ")");
             this.emitBlock(() => this.emitConsume(variable, xfer.consumer, targetType, emitFinish));
             return false;
         }
-        else if (xfer instanceof Transformers_1.MinMaxValueTransformer) {
+        else if (xfer instanceof MinMaxValueTransformer) {
             const min = xfer.minimum;
             const max = xfer.maximum;
             const conditions = [];
@@ -1083,15 +1075,15 @@ class NewtonsoftCSharpRenderer extends CSharpRenderer {
             if (max !== undefined) {
                 conditions.push([variable, " <= ", max.toString()]);
             }
-            this.emitLine("if (", (0, collection_utils_1.arrayIntercalate)([" && "], conditions), ")");
+            this.emitLine("if (", arrayIntercalate([" && "], conditions), ")");
             this.emitBlock(() => this.emitConsume(variable, xfer.consumer, targetType, emitFinish));
             return false;
         }
-        else if (xfer instanceof Transformers_1.UnionInstantiationTransformer) {
-            if (!(targetType instanceof Type_1.UnionType)) {
-                return (0, Support_1.panic)("Union instantiation transformer must produce a union type");
+        else if (xfer instanceof UnionInstantiationTransformer) {
+            if (!(targetType instanceof UnionType)) {
+                return panic("Union instantiation transformer must produce a union type");
             }
-            const maybeNullable = (0, TypeUtils_1.nullableFromUnion)(targetType);
+            const maybeNullable = nullableFromUnion(targetType);
             if (maybeNullable !== null) {
                 emitFinish(variable);
             }
@@ -1110,12 +1102,12 @@ class NewtonsoftCSharpRenderer extends CSharpRenderer {
             return true;
         }
         else {
-            return (0, Support_1.panic)("Unknown transformer");
+            return panic("Unknown transformer");
         }
         return false;
     }
     emitTransformation(converterName, t) {
-        const xf = (0, Support_1.defined)((0, Transformers_1.transformationForType)(t));
+        const xf = defined(transformationForType(t));
         const reverse = xf.reverse;
         const targetType = xf.targetType;
         const xfer = xf.transformer;
@@ -1135,7 +1127,7 @@ class NewtonsoftCSharpRenderer extends CSharpRenderer {
                 // whether the type is a nullable?
                 // FIXME: This could duplicate one of the cases handled below in
                 // `emitDecodeTransformer`.
-                if (haveNullable && !(targetType instanceof Type_1.UnionType)) {
+                if (haveNullable && !(targetType instanceof UnionType)) {
                     this.emitLine("if (reader.TokenType == JsonToken.Null) return null;");
                 }
                 const allHandled = this.emitDecodeTransformer(xfer, targetType, v => this.emitLine("return ", v, ";"));
@@ -1146,7 +1138,7 @@ class NewtonsoftCSharpRenderer extends CSharpRenderer {
             this.ensureBlankLine();
             this.emitWriteJson("untypedValue", () => {
                 // FIXME: See above.
-                if (haveNullable && !(targetType instanceof Type_1.UnionType)) {
+                if (haveNullable && !(targetType instanceof UnionType)) {
                     this.emitLine("if (untypedValue == null)");
                     this.emitBlock(() => {
                         this.emitLine("serializer.Serialize(writer, null);");
@@ -1179,9 +1171,8 @@ class NewtonsoftCSharpRenderer extends CSharpRenderer {
         return this._needNamespaces;
     }
 }
-exports.NewtonsoftCSharpRenderer = NewtonsoftCSharpRenderer;
-exports.systemTextJsonCSharpOptions = Object.assign({}, exports.cSharpOptions, {});
-class SystemTextJsonCSharpRenderer extends CSharpRenderer {
+export const systemTextJsonCSharpOptions = Object.assign({}, cSharpOptions, {});
+export class SystemTextJsonCSharpRenderer extends CSharpRenderer {
     constructor(targetLanguage, renderContext, _options) {
         super(targetLanguage, renderContext, _options);
         this._options = _options;
@@ -1221,17 +1212,17 @@ class SystemTextJsonCSharpRenderer extends CSharpRenderer {
     makeNameForTransformation(xf, typeName) {
         if (typeName === undefined) {
             let xfer = xf.transformer;
-            if (xfer instanceof Transformers_1.DecodingTransformer && xfer.consumer !== undefined) {
+            if (xfer instanceof DecodingTransformer && xfer.consumer !== undefined) {
                 xfer = xfer.consumer;
             }
-            return new Naming_1.SimpleName([`${xfer.kind}_converter`], namingFunction, ConvenienceRenderer_1.inferredNameOrder + 30);
+            return new SimpleName([`${xfer.kind}_converter`], namingFunction, inferredNameOrder + 30);
         }
-        return new Naming_1.DependencyName(namingFunction, typeName.order + 30, lookup => `${lookup(typeName)}_converter`);
+        return new DependencyName(namingFunction, typeName.order + 30, lookup => `${lookup(typeName)}_converter`);
     }
     makeNamedTypeDependencyNames(t, name) {
-        if (!(t instanceof Type_1.EnumType))
+        if (!(t instanceof EnumType))
             return [];
-        const extensionsName = new Naming_1.DependencyName(namingFunction, name.order + 30, lookup => `${lookup(name)}_extensions`);
+        const extensionsName = new DependencyName(namingFunction, name.order + 30, lookup => `${lookup(name)}_extensions`);
         this._enumExtensionsNames.set(name, extensionsName);
         return [extensionsName];
     }
@@ -1274,13 +1265,13 @@ class SystemTextJsonCSharpRenderer extends CSharpRenderer {
         this.emitLine("//");
         this.forEachTopLevel("none", (t, topLevelName) => {
             let rhs;
-            if (t instanceof Type_1.EnumType) {
+            if (t instanceof EnumType) {
                 rhs = ["JsonSerializer.Deserialize<", topLevelName, ">(jsonString)"];
             }
             else {
                 rhs = [topLevelName, ".FromJson(jsonString)"];
             }
-            this.emitLine("//    var ", (0, Source_1.modifySource)(Strings_1.camelCase, topLevelName), " = ", rhs, ";");
+            this.emitLine("//    var ", modifySource(camelCase, topLevelName), " = ", rhs, ";");
         });
         // fix: should this be an option? Or respond to an existing option?
         this.emitLine("#nullable enable");
@@ -1289,27 +1280,27 @@ class SystemTextJsonCSharpRenderer extends CSharpRenderer {
         this.emitLine("#pragma warning disable CS8603");
     }
     converterForType(t) {
-        let xf = (0, Transformers_1.transformationForType)(t);
-        if (xf === undefined && t instanceof Type_1.UnionType) {
-            const maybeNullable = (0, TypeUtils_1.nullableFromUnion)(t);
+        let xf = transformationForType(t);
+        if (xf === undefined && t instanceof UnionType) {
+            const maybeNullable = nullableFromUnion(t);
             if (maybeNullable !== null) {
                 t = maybeNullable;
-                xf = (0, Transformers_1.transformationForType)(t);
+                xf = transformationForType(t);
             }
         }
         if (xf === undefined)
             return undefined;
         if (alwaysApplyTransformation(xf))
             return undefined;
-        return (0, Support_1.defined)(this.nameForTransformation(t));
+        return defined(this.nameForTransformation(t));
     }
     attributesForProperty(property, _name, _c, jsonName) {
         if (!this._needAttributes)
             return undefined;
         const attributes = [];
         const jsonPropertyName = this._options.dense ? denseJsonPropertyName : "JsonPropertyName";
-        const escapedName = (0, Strings_1.utf16StringEscape)(jsonName);
-        const isNullable = (0, Transformers_1.followTargetType)(property.type).isNullable;
+        const escapedName = utf16StringEscape(jsonName);
+        const isNullable = followTargetType(property.type).isNullable;
         const isOptional = property.isOptional;
         if (isOptional && !isNullable) {
             attributes.push(["[", "JsonIgnore", "(Condition = JsonIgnoreCondition.WhenWritingNull)]"]);
@@ -1342,14 +1333,14 @@ class SystemTextJsonCSharpRenderer extends CSharpRenderer {
         return t.kind === "any" || t.kind === "none" ? "object" : this.csType(t);
     }
     emitFromJsonForTopLevel(t, name) {
-        if (t instanceof Type_1.EnumType)
+        if (t instanceof EnumType)
             return;
         let partial;
         let typeKind;
         const definedType = this.namedTypeToNameForTopLevel(t);
         if (definedType !== undefined) {
             partial = "partial ";
-            typeKind = definedType instanceof Type_1.ClassType ? "class" : "struct";
+            typeKind = definedType instanceof ClassType ? "class" : "struct";
         }
         else {
             partial = "";
@@ -1436,7 +1427,7 @@ class SystemTextJsonCSharpRenderer extends CSharpRenderer {
                 this.emitLine("{");
                 this.indent(() => {
                     for (const [t, converter] of this.typesWithNamedTransformations) {
-                        if (alwaysApplyTransformation((0, Support_1.defined)((0, Transformers_1.transformationForType)(t)))) {
+                        if (alwaysApplyTransformation(defined(transformationForType(t)))) {
                             this.emitLine(this.converterObject(converter), ",");
                         }
                     }
@@ -1472,7 +1463,7 @@ class SystemTextJsonCSharpRenderer extends CSharpRenderer {
         }
     }
     emitDecodeTransformer(xfer, targetType, emitFinish, variableName = "value") {
-        if (xfer instanceof Transformers_1.DecodingTransformer) {
+        if (xfer instanceof DecodingTransformer) {
             const source = xfer.sourceType;
             const converter = this.converterForType(targetType);
             if (converter !== undefined) {
@@ -1486,10 +1477,10 @@ class SystemTextJsonCSharpRenderer extends CSharpRenderer {
             }
             return this.emitConsume(variableName, xfer.consumer, targetType, emitFinish);
         }
-        else if (xfer instanceof Transformers_1.ArrayDecodingTransformer) {
+        else if (xfer instanceof ArrayDecodingTransformer) {
             // FIXME: Consume StartArray
-            if (!(targetType instanceof Type_1.ArrayType)) {
-                return (0, Support_1.panic)("Array decoding must produce an array type");
+            if (!(targetType instanceof ArrayType)) {
+                return panic("Array decoding must produce an array type");
             }
             // FIXME: handle EOF
             this.emitLine("reader.Read();");
@@ -1507,7 +1498,7 @@ class SystemTextJsonCSharpRenderer extends CSharpRenderer {
             emitFinish(result);
             return true;
         }
-        else if (xfer instanceof Transformers_1.DecodingChoiceTransformer) {
+        else if (xfer instanceof DecodingChoiceTransformer) {
             this.emitDecoderSwitch(() => {
                 const nullTransformer = xfer.nullTransformer;
                 if (nullTransformer !== undefined) {
@@ -1533,33 +1524,33 @@ class SystemTextJsonCSharpRenderer extends CSharpRenderer {
             return false;
         }
         else {
-            return (0, Support_1.panic)("Unknown transformer");
+            return panic("Unknown transformer");
         }
     }
     stringCaseValue(t, stringCase) {
         if (t.kind === "string") {
-            return ['"', (0, Strings_1.utf16StringEscape)(stringCase), '"'];
+            return ['"', utf16StringEscape(stringCase), '"'];
         }
-        else if (t instanceof Type_1.EnumType) {
+        else if (t instanceof EnumType) {
             return [this.nameForNamedType(t), ".", this.nameForEnumCase(t, stringCase)];
         }
-        return (0, Support_1.panic)(`Type ${t.kind} does not have string cases`);
+        return panic(`Type ${t.kind} does not have string cases`);
     }
     emitTransformer(variable, xfer, targetType, emitFinish) {
         function directTargetType(continuation) {
             if (continuation === undefined) {
                 return targetType;
             }
-            return (0, Transformers_1.followTargetType)(continuation.sourceType);
+            return followTargetType(continuation.sourceType);
         }
-        if (xfer instanceof Transformers_1.ChoiceTransformer) {
+        if (xfer instanceof ChoiceTransformer) {
             const caseXfers = xfer.transformers;
-            if (caseXfers.length > 1 && caseXfers.every(caseXfer => caseXfer instanceof Transformers_1.StringMatchTransformer)) {
+            if (caseXfers.length > 1 && caseXfers.every(caseXfer => caseXfer instanceof StringMatchTransformer)) {
                 this.emitLine("switch (", variable, ")");
                 this.emitBlock(() => {
                     for (const caseXfer of caseXfers) {
                         const matchXfer = caseXfer;
-                        const value = this.stringCaseValue((0, Transformers_1.followTargetType)(matchXfer.sourceType), matchXfer.stringCase);
+                        const value = this.stringCaseValue(followTargetType(matchXfer.sourceType), matchXfer.stringCase);
                         this.emitLine("case ", value, ":");
                         this.indent(() => {
                             const allDone = this.emitTransformer(variable, matchXfer.transformer, targetType, emitFinish);
@@ -1578,9 +1569,9 @@ class SystemTextJsonCSharpRenderer extends CSharpRenderer {
                 }
             }
         }
-        else if (xfer instanceof Transformers_1.UnionMemberMatchTransformer) {
+        else if (xfer instanceof UnionMemberMatchTransformer) {
             const memberType = xfer.memberType;
-            const maybeNullable = (0, TypeUtils_1.nullableFromUnion)(xfer.sourceType);
+            const maybeNullable = nullableFromUnion(xfer.sourceType);
             let test;
             let member;
             if (maybeNullable !== null) {
@@ -1608,12 +1599,12 @@ class SystemTextJsonCSharpRenderer extends CSharpRenderer {
             this.emitLine("if (", test, ")");
             this.emitBlock(() => this.emitTransformer(member, xfer.transformer, targetType, emitFinish));
         }
-        else if (xfer instanceof Transformers_1.StringMatchTransformer) {
-            const value = this.stringCaseValue((0, Transformers_1.followTargetType)(xfer.sourceType), xfer.stringCase);
+        else if (xfer instanceof StringMatchTransformer) {
+            const value = this.stringCaseValue(followTargetType(xfer.sourceType), xfer.stringCase);
             this.emitLine("if (", variable, " == ", value, ")");
             this.emitBlock(() => this.emitTransformer(variable, xfer.transformer, targetType, emitFinish));
         }
-        else if (xfer instanceof Transformers_1.EncodingTransformer) {
+        else if (xfer instanceof EncodingTransformer) {
             const converter = this.converterForType(xfer.sourceType);
             if (converter !== undefined) {
                 this.emitLine("var converter = ", this.converterObject(converter), ";");
@@ -1625,7 +1616,7 @@ class SystemTextJsonCSharpRenderer extends CSharpRenderer {
             emitFinish([]);
             return true;
         }
-        else if (xfer instanceof Transformers_1.ArrayEncodingTransformer) {
+        else if (xfer instanceof ArrayEncodingTransformer) {
             this.emitLine("writer.WriteStartArray();");
             const itemVariable = "arrayItem";
             this.emitLine("foreach (var ", itemVariable, " in ", variable, ")");
@@ -1638,7 +1629,7 @@ class SystemTextJsonCSharpRenderer extends CSharpRenderer {
             emitFinish([]);
             return true;
         }
-        else if (xfer instanceof Transformers_1.ParseStringTransformer) {
+        else if (xfer instanceof ParseStringTransformer) {
             const immediateTargetType = xfer.consumer === undefined ? targetType : xfer.consumer.sourceType;
             switch (immediateTargetType.kind) {
                 case "date-time":
@@ -1676,10 +1667,10 @@ class SystemTextJsonCSharpRenderer extends CSharpRenderer {
                     this.emitBlock(() => this.emitConsume("b", xfer.consumer, targetType, emitFinish));
                     break;
                 default:
-                    return (0, Support_1.panic)(`Parsing string to ${immediateTargetType.kind} not supported`);
+                    return panic(`Parsing string to ${immediateTargetType.kind} not supported`);
             }
         }
-        else if (xfer instanceof Transformers_1.StringifyTransformer) {
+        else if (xfer instanceof StringifyTransformer) {
             switch (xfer.sourceType.kind) {
                 case "date-time":
                     return this.emitConsume([variable, '.ToString("o", System.Globalization.CultureInfo.InvariantCulture)'], xfer.consumer, targetType, emitFinish);
@@ -1692,14 +1683,14 @@ class SystemTextJsonCSharpRenderer extends CSharpRenderer {
                     this.emitLine("var boolString = ", variable, ' ? "true" : "false";');
                     return this.emitConsume("boolString", xfer.consumer, targetType, emitFinish);
                 default:
-                    return (0, Support_1.panic)(`Stringifying ${xfer.sourceType.kind} not supported`);
+                    return panic(`Stringifying ${xfer.sourceType.kind} not supported`);
             }
         }
-        else if (xfer instanceof Transformers_1.StringProducerTransformer) {
+        else if (xfer instanceof StringProducerTransformer) {
             const value = this.stringCaseValue(directTargetType(xfer.consumer), xfer.result);
             return this.emitConsume(value, xfer.consumer, targetType, emitFinish);
         }
-        else if (xfer instanceof Transformers_1.MinMaxLengthCheckTransformer) {
+        else if (xfer instanceof MinMaxLengthCheckTransformer) {
             const min = xfer.minLength;
             const max = xfer.maxLength;
             const conditions = [];
@@ -1709,11 +1700,11 @@ class SystemTextJsonCSharpRenderer extends CSharpRenderer {
             if (max !== undefined) {
                 conditions.push([variable, ".Length <= ", max.toString()]);
             }
-            this.emitLine("if (", (0, collection_utils_1.arrayIntercalate)([" && "], conditions), ")");
+            this.emitLine("if (", arrayIntercalate([" && "], conditions), ")");
             this.emitBlock(() => this.emitConsume(variable, xfer.consumer, targetType, emitFinish));
             return false;
         }
-        else if (xfer instanceof Transformers_1.MinMaxValueTransformer) {
+        else if (xfer instanceof MinMaxValueTransformer) {
             const min = xfer.minimum;
             const max = xfer.maximum;
             const conditions = [];
@@ -1723,15 +1714,15 @@ class SystemTextJsonCSharpRenderer extends CSharpRenderer {
             if (max !== undefined) {
                 conditions.push([variable, " <= ", max.toString()]);
             }
-            this.emitLine("if (", (0, collection_utils_1.arrayIntercalate)([" && "], conditions), ")");
+            this.emitLine("if (", arrayIntercalate([" && "], conditions), ")");
             this.emitBlock(() => this.emitConsume(variable, xfer.consumer, targetType, emitFinish));
             return false;
         }
-        else if (xfer instanceof Transformers_1.UnionInstantiationTransformer) {
-            if (!(targetType instanceof Type_1.UnionType)) {
-                return (0, Support_1.panic)("Union instantiation transformer must produce a union type");
+        else if (xfer instanceof UnionInstantiationTransformer) {
+            if (!(targetType instanceof UnionType)) {
+                return panic("Union instantiation transformer must produce a union type");
             }
-            const maybeNullable = (0, TypeUtils_1.nullableFromUnion)(targetType);
+            const maybeNullable = nullableFromUnion(targetType);
             if (maybeNullable !== null) {
                 emitFinish(variable);
             }
@@ -1750,12 +1741,12 @@ class SystemTextJsonCSharpRenderer extends CSharpRenderer {
             return true;
         }
         else {
-            return (0, Support_1.panic)("Unknown transformer");
+            return panic("Unknown transformer");
         }
         return false;
     }
     emitTransformation(converterName, t) {
-        const xf = (0, Support_1.defined)((0, Transformers_1.transformationForType)(t));
+        const xf = defined(transformationForType(t));
         const reverse = xf.reverse;
         const targetType = xf.targetType;
         const xfer = xf.transformer;
@@ -1929,4 +1920,3 @@ internal class IsoDateTimeOffsetConverter : JsonConverter<DateTimeOffset>
         return this._needNamespaces;
     }
 }
-exports.SystemTextJsonCSharpRenderer = SystemTextJsonCSharpRenderer;

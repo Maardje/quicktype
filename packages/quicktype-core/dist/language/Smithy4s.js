@@ -1,23 +1,20 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.SmithyTargetLanguage = exports.Smithy4sRenderer = exports.SmithyOptions = exports.Framework = void 0;
-const Annotation_1 = require("../Annotation");
-const ConvenienceRenderer_1 = require("../ConvenienceRenderer");
-const Naming_1 = require("../Naming");
-const RendererOptions_1 = require("../RendererOptions");
-const Source_1 = require("../Source");
-const Strings_1 = require("../support/Strings");
-const Support_1 = require("../support/Support");
-const TargetLanguage_1 = require("../TargetLanguage");
-const Type_1 = require("../Type");
-const TypeUtils_1 = require("../TypeUtils");
-var Framework;
+import { anyTypeIssueAnnotation, nullTypeIssueAnnotation } from "../Annotation";
+import { ConvenienceRenderer } from "../ConvenienceRenderer";
+import { funPrefixNamer } from "../Naming";
+import { EnumOption, StringOption, getOptionValues } from "../RendererOptions";
+import { maybeAnnotated } from "../Source";
+import { allLowerWordStyle, allUpperWordStyle, combineWords, firstUpperWordStyle, isDigit, isLetterOrUnderscore, isNumeric, legalizeCharacters, splitIntoWords } from "../support/Strings";
+import { assertNever } from "../support/Support";
+import { TargetLanguage } from "../TargetLanguage";
+import { ArrayType, MapType } from "../Type";
+import { matchCompoundType, matchType, nullableFromUnion, removeNullFromUnion } from "../TypeUtils";
+export var Framework;
 (function (Framework) {
     Framework["None"] = "None";
-})(Framework = exports.Framework || (exports.Framework = {}));
-exports.SmithyOptions = {
-    framework: new RendererOptions_1.EnumOption("framework", "Serialization framework", [["just-types", Framework.None]], undefined),
-    packageName: new RendererOptions_1.StringOption("package", "Package", "PACKAGE", "quicktype")
+})(Framework || (Framework = {}));
+export const SmithyOptions = {
+    framework: new EnumOption("framework", "Serialization framework", [["just-types", Framework.None]], undefined),
+    packageName: new StringOption("package", "Package", "PACKAGE", "quicktype")
 };
 // Use backticks for param names with symbols
 const invalidSymbols = [
@@ -106,19 +103,19 @@ const shouldAddBacktick = (paramName) => {
         !isNaN(parseInt(paramName.charAt(0))));
 };
 function isPartCharacter(codePoint) {
-    return (0, Strings_1.isLetterOrUnderscore)(codePoint) || (0, Strings_1.isNumeric)(codePoint);
+    return isLetterOrUnderscore(codePoint) || isNumeric(codePoint);
 }
 function isStartCharacter(codePoint) {
-    return isPartCharacter(codePoint) && !(0, Strings_1.isDigit)(codePoint);
+    return isPartCharacter(codePoint) && !isDigit(codePoint);
 }
-const legalizeName = (0, Strings_1.legalizeCharacters)(isPartCharacter);
+const legalizeName = legalizeCharacters(isPartCharacter);
 function scalaNameStyle(isUpper, original) {
-    const words = (0, Strings_1.splitIntoWords)(original);
-    return (0, Strings_1.combineWords)(words, legalizeName, isUpper ? Strings_1.firstUpperWordStyle : Strings_1.allLowerWordStyle, Strings_1.firstUpperWordStyle, isUpper ? Strings_1.allUpperWordStyle : Strings_1.allLowerWordStyle, Strings_1.allUpperWordStyle, "", isStartCharacter);
+    const words = splitIntoWords(original);
+    return combineWords(words, legalizeName, isUpper ? firstUpperWordStyle : allLowerWordStyle, firstUpperWordStyle, isUpper ? allUpperWordStyle : allLowerWordStyle, allUpperWordStyle, "", isStartCharacter);
 }
-const upperNamingFunction = (0, Naming_1.funPrefixNamer)("upper", s => scalaNameStyle(true, s));
-const lowerNamingFunction = (0, Naming_1.funPrefixNamer)("lower", s => scalaNameStyle(false, s));
-class Smithy4sRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
+const upperNamingFunction = funPrefixNamer("upper", s => scalaNameStyle(true, s));
+const lowerNamingFunction = funPrefixNamer("lower", s => scalaNameStyle(false, s));
+export class Smithy4sRenderer extends ConvenienceRenderer {
     constructor(targetLanguage, renderContext, _scalaOptions) {
         super(targetLanguage, renderContext);
         this._scalaOptions = _scalaOptions;
@@ -145,10 +142,10 @@ class Smithy4sRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         return lowerNamingFunction;
     }
     makeUnionMemberNamer() {
-        return (0, Naming_1.funPrefixNamer)("upper", s => scalaNameStyle(true, s) + "Value");
+        return funPrefixNamer("upper", s => scalaNameStyle(true, s) + "Value");
     }
     makeEnumCaseNamer() {
-        return (0, Naming_1.funPrefixNamer)("upper", s => s.replace(" ", "")); // TODO - add backticks where appropriate
+        return funPrefixNamer("upper", s => s.replace(" ", "")); // TODO - add backticks where appropriate
     }
     emitDescriptionBlock(lines) {
         this.emitCommentLines(lines, { lineStart: " * ", beforeComment: "/**", afterComment: " */" });
@@ -182,13 +179,13 @@ class Smithy4sRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         // return [this.scalaType(mapType.values, withIssues), "Map"];
     }
     scalaType(t, withIssues = false, noOptional = false) {
-        return (0, TypeUtils_1.matchType)(t, _anyType => {
-            return (0, Source_1.maybeAnnotated)(withIssues, Annotation_1.anyTypeIssueAnnotation, this.anySourceType(!noOptional));
+        return matchType(t, _anyType => {
+            return maybeAnnotated(withIssues, anyTypeIssueAnnotation, this.anySourceType(!noOptional));
         }, _nullType => {
             // return "None.type"
-            return (0, Source_1.maybeAnnotated)(withIssues, Annotation_1.nullTypeIssueAnnotation, this.anySourceType(!noOptional));
+            return maybeAnnotated(withIssues, nullTypeIssueAnnotation, this.anySourceType(!noOptional));
         }, _boolType => "Boolean", _integerType => "Long", _doubleType => "Double", _stringType => "String", arrayType => this.arrayType(arrayType, withIssues), classType => this.nameForNamedType(classType), mapType => this.mapType(mapType, withIssues), enumType => this.nameForNamedType(enumType), unionType => {
-            const nullable = (0, TypeUtils_1.nullableFromUnion)(unionType);
+            const nullable = nullableFromUnion(unionType);
             if (nullable !== null) {
                 return [this.scalaType(nullable, withIssues)];
             }
@@ -244,7 +241,7 @@ class Smithy4sRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             let count = c.getProperties().size;
             let first = true;
             this.forEachClassProperty(c, "none", (_, jsonName, p) => {
-                const nullable = p.type.kind === "union" && (0, TypeUtils_1.nullableFromUnion)(p.type) !== null;
+                const nullable = p.type.kind === "union" && nullableFromUnion(p.type) !== null;
                 const nullableOrOptional = p.isOptional || p.type.kind === "null" || nullable;
                 const last = --count === 0;
                 const meta = [];
@@ -279,7 +276,7 @@ class Smithy4sRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             function ignore(_) {
                 return;
             }
-            (0, TypeUtils_1.matchCompoundType)(p.type, at => {
+            matchCompoundType(p.type, at => {
                 this.emitLine([
                     "list ",
                     this.scalaType(at, true),
@@ -331,7 +328,7 @@ class Smithy4sRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         }
         const emitLater = [];
         this.emitDescription(this.descriptionForType(u));
-        const [maybeNull, nonNulls] = (0, TypeUtils_1.removeNullFromUnion)(u, sortBy);
+        const [maybeNull, nonNulls] = removeNullFromUnion(u, sortBy);
         const theTypes = [];
         this.forEachUnionMember(u, nonNulls, "none", null, (_, t) => {
             const laterType = t.kind === "array" || t.kind === "map";
@@ -355,7 +352,7 @@ class Smithy4sRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             function ignore(_) {
                 return;
             }
-            (0, TypeUtils_1.matchCompoundType)(p, at => {
+            matchCompoundType(p, at => {
                 this.emitLine([
                     "list ",
                     this.scalaType(at, true),
@@ -378,23 +375,22 @@ class Smithy4sRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         this.emitHeader();
         // Top-level arrays, maps
         this.forEachTopLevel("leading", (t, name) => {
-            if (t instanceof Type_1.ArrayType) {
+            if (t instanceof ArrayType) {
                 this.emitTopLevelArray(t, name);
             }
-            else if (t instanceof Type_1.MapType) {
+            else if (t instanceof MapType) {
                 this.emitTopLevelMap(t, name);
             }
         });
         this.forEachNamedType("leading-and-interposing", (c, n) => this.emitClassDefinition(c, n), (e, n) => this.emitEnumDefinition(e, n), (u, n) => this.emitUnionDefinition(u, n));
     }
 }
-exports.Smithy4sRenderer = Smithy4sRenderer;
-class SmithyTargetLanguage extends TargetLanguage_1.TargetLanguage {
+export class SmithyTargetLanguage extends TargetLanguage {
     constructor() {
         super("Smithy", ["Smithy"], "smithy");
     }
     getOptions() {
-        return [exports.SmithyOptions.framework, exports.SmithyOptions.packageName];
+        return [SmithyOptions.framework, SmithyOptions.packageName];
     }
     get supportsOptionalClassProperties() {
         return true;
@@ -403,13 +399,12 @@ class SmithyTargetLanguage extends TargetLanguage_1.TargetLanguage {
         return true;
     }
     makeRenderer(renderContext, untypedOptionValues) {
-        const options = (0, RendererOptions_1.getOptionValues)(exports.SmithyOptions, untypedOptionValues);
+        const options = getOptionValues(SmithyOptions, untypedOptionValues);
         switch (options.framework) {
             case Framework.None:
                 return new Smithy4sRenderer(this, renderContext, options);
             default:
-                return (0, Support_1.assertNever)(options.framework);
+                return assertNever(options.framework);
         }
     }
 }
-exports.SmithyTargetLanguage = SmithyTargetLanguage;

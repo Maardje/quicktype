@@ -1,14 +1,11 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.PikeRenderer = exports.PikeTargetLanguage = exports.pikeOptions = void 0;
-const ConvenienceRenderer_1 = require("../ConvenienceRenderer");
-const Naming_1 = require("../Naming");
-const Source_1 = require("../Source");
-const Strings_1 = require("../support/Strings");
-const TargetLanguage_1 = require("../TargetLanguage");
-const Type_1 = require("../Type");
-const TypeUtils_1 = require("../TypeUtils");
-exports.pikeOptions = {};
+import { ConvenienceRenderer } from "../ConvenienceRenderer";
+import { funPrefixNamer } from "../Naming";
+import { multiWord, parenIfNeeded, singleWord } from "../Source";
+import { isLetterOrUnderscoreOrDigit, legalizeCharacters, makeNameStyle, stringEscape } from "../support/Strings";
+import { TargetLanguage } from "../TargetLanguage";
+import { ArrayType, MapType, PrimitiveType } from "../Type";
+import { matchType, nullableFromUnion, removeNullFromUnion } from "../TypeUtils";
+export const pikeOptions = {};
 const keywords = [
     "auto",
     "nomask",
@@ -63,11 +60,11 @@ const keywords = [
     "typeof",
     "global"
 ];
-const legalizeName = (0, Strings_1.legalizeCharacters)(Strings_1.isLetterOrUnderscoreOrDigit);
-const enumNamingFunction = (0, Naming_1.funPrefixNamer)("enumNamer", (0, Strings_1.makeNameStyle)("upper-underscore", legalizeName));
-const namingFunction = (0, Naming_1.funPrefixNamer)("genericNamer", (0, Strings_1.makeNameStyle)("underscore", legalizeName));
-const namedTypeNamingFunction = (0, Naming_1.funPrefixNamer)("typeNamer", (0, Strings_1.makeNameStyle)("pascal", legalizeName));
-class PikeTargetLanguage extends TargetLanguage_1.TargetLanguage {
+const legalizeName = legalizeCharacters(isLetterOrUnderscoreOrDigit);
+const enumNamingFunction = funPrefixNamer("enumNamer", makeNameStyle("upper-underscore", legalizeName));
+const namingFunction = funPrefixNamer("genericNamer", makeNameStyle("underscore", legalizeName));
+const namedTypeNamingFunction = funPrefixNamer("typeNamer", makeNameStyle("pascal", legalizeName));
+export class PikeTargetLanguage extends TargetLanguage {
     constructor() {
         super("Pike", ["pike", "pikelang"], "pmod");
     }
@@ -78,8 +75,7 @@ class PikeTargetLanguage extends TargetLanguage_1.TargetLanguage {
         return new PikeRenderer(this, renderContext);
     }
 }
-exports.PikeTargetLanguage = PikeTargetLanguage;
-class PikeRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
+export class PikeRenderer extends ConvenienceRenderer {
     emitSourceStructure() {
         this.emitInformationComment();
         this.ensureBlankLine();
@@ -121,20 +117,20 @@ class PikeRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     }
     sourceFor(t) {
         if (["class", "object", "enum"].includes(t.kind)) {
-            return (0, Source_1.singleWord)(this.nameForNamedType(t));
+            return singleWord(this.nameForNamedType(t));
         }
-        return (0, TypeUtils_1.matchType)(t, _anyType => (0, Source_1.singleWord)("mixed"), _nullType => (0, Source_1.singleWord)("mixed"), _boolType => (0, Source_1.singleWord)("bool"), _integerType => (0, Source_1.singleWord)("int"), _doubleType => (0, Source_1.singleWord)("float"), _stringType => (0, Source_1.singleWord)("string"), arrayType => (0, Source_1.singleWord)(["array(", this.sourceFor(arrayType.items).source, ")"]), _classType => (0, Source_1.singleWord)(this.nameForNamedType(_classType)), mapType => {
+        return matchType(t, _anyType => singleWord("mixed"), _nullType => singleWord("mixed"), _boolType => singleWord("bool"), _integerType => singleWord("int"), _doubleType => singleWord("float"), _stringType => singleWord("string"), arrayType => singleWord(["array(", this.sourceFor(arrayType.items).source, ")"]), _classType => singleWord(this.nameForNamedType(_classType)), mapType => {
             let valueSource;
             const v = mapType.values;
             valueSource = this.sourceFor(v).source;
-            return (0, Source_1.singleWord)(["mapping(string:", valueSource, ")"]);
-        }, _enumType => (0, Source_1.singleWord)("enum"), unionType => {
-            if ((0, TypeUtils_1.nullableFromUnion)(unionType) !== null) {
-                const children = Array.from(unionType.getChildren()).map(c => (0, Source_1.parenIfNeeded)(this.sourceFor(c)));
-                return (0, Source_1.multiWord)("|", ...children);
+            return singleWord(["mapping(string:", valueSource, ")"]);
+        }, _enumType => singleWord("enum"), unionType => {
+            if (nullableFromUnion(unionType) !== null) {
+                const children = Array.from(unionType.getChildren()).map(c => parenIfNeeded(this.sourceFor(c)));
+                return multiWord("|", ...children);
             }
             else {
-                return (0, Source_1.singleWord)(this.nameForNamedType(unionType));
+                return singleWord(this.nameForNamedType(unionType));
             }
         });
     }
@@ -153,7 +149,7 @@ class PikeRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             let table = [];
             this.forEachEnumCase(e, "none", (name, jsonName) => {
                 table.push([
-                    [name, ' = "', (0, Strings_1.stringEscape)(jsonName), '", '],
+                    [name, ' = "', stringEscape(jsonName), '", '],
                     ['// json: "', jsonName, '"']
                 ]);
             });
@@ -161,12 +157,12 @@ class PikeRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         });
     }
     emitUnion(u, unionName) {
-        const isMaybeWithSingleType = (0, TypeUtils_1.nullableFromUnion)(u);
+        const isMaybeWithSingleType = nullableFromUnion(u);
         if (isMaybeWithSingleType !== null) {
             return;
         }
         this.emitDescription(this.descriptionForType(u));
-        const [, nonNulls] = (0, TypeUtils_1.removeNullFromUnion)(u);
+        const [, nonNulls] = removeNullFromUnion(u);
         let types = [];
         this.forEachUnionMember(u, nonNulls, "none", null, (_name, t) => {
             const pikeType = this.sourceFor(t).source;
@@ -226,20 +222,20 @@ class PikeRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
     }
     emitTopLevelConverter(t, name) {
         this.emitBlock([name, " ", name, "_from_JSON(mixed json)"], () => {
-            if (t instanceof Type_1.PrimitiveType) {
+            if (t instanceof PrimitiveType) {
                 this.emitLine(["return json;"]);
             }
-            else if (t instanceof Type_1.ArrayType) {
-                if (t.items instanceof Type_1.PrimitiveType)
+            else if (t instanceof ArrayType) {
+                if (t.items instanceof PrimitiveType)
                     this.emitLine(["return json;"]);
                 else
                     this.emitLine(["return map(json, ", this.sourceFor(t.items).source, "_from_JSON);"]);
             }
-            else if (t instanceof Type_1.MapType) {
+            else if (t instanceof MapType) {
                 const type = this.sourceFor(t.values).source;
                 this.emitLine(["mapping(string:", type, ") retval = ([]);"]);
                 let assignmentRval;
-                if (t.values instanceof Type_1.PrimitiveType)
+                if (t.values instanceof PrimitiveType)
                     assignmentRval = ["(", type, ") v"];
                 else
                     assignmentRval = [type, "_from_JSON(v)"];
@@ -254,7 +250,7 @@ class PikeRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
         this.emitBlock(["string encode_json()"], () => {
             this.emitMappingBlock(["mapping(string:mixed) json = "], () => {
                 this.forEachClassProperty(c, "none", (name, jsonName) => {
-                    this.emitLine(['"', (0, Strings_1.stringEscape)(jsonName), '" : ', name, ","]);
+                    this.emitLine(['"', stringEscape(jsonName), '" : ', name, ","]);
                 });
             });
             this.ensureBlankLine();
@@ -266,11 +262,10 @@ class PikeRenderer extends ConvenienceRenderer_1.ConvenienceRenderer {
             this.emitLine([className, " retval = ", className, "();"]);
             this.ensureBlankLine();
             this.forEachClassProperty(c, "none", (name, jsonName) => {
-                this.emitLine(["retval.", name, ' = json["', (0, Strings_1.stringEscape)(jsonName), '"];']);
+                this.emitLine(["retval.", name, ' = json["', stringEscape(jsonName), '"];']);
             });
             this.ensureBlankLine();
             this.emitLine(["return retval;"]);
         });
     }
 }
-exports.PikeRenderer = PikeRenderer;

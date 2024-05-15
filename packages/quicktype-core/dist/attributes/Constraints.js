@@ -1,20 +1,17 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.patternForType = exports.patternAttributeProducer = exports.patternTypeAttributeKind = exports.PatternTypeAttributeKind = exports.minMaxLengthForType = exports.minMaxValueForType = exports.minMaxLengthAttributeProducer = exports.minMaxAttributeProducer = exports.minMaxLengthTypeAttributeKind = exports.minMaxTypeAttributeKind = exports.MinMaxConstraintTypeAttributeKind = void 0;
-const Messages_1 = require("../Messages");
-const Support_1 = require("../support/Support");
-const TypeAttributes_1 = require("./TypeAttributes");
+import { messageError } from "../Messages";
+import { assert } from "../support/Support";
+import { TypeAttributeKind } from "./TypeAttributes";
 function checkMinMaxConstraint(minmax) {
     const [min, max] = minmax;
     if (typeof min === "number" && typeof max === "number" && min > max) {
-        return (0, Messages_1.messageError)("MiscInvalidMinMaxConstraint", { min, max });
+        return messageError("MiscInvalidMinMaxConstraint", { min, max });
     }
     if (min === undefined && max === undefined) {
         return undefined;
     }
     return minmax;
 }
-class MinMaxConstraintTypeAttributeKind extends TypeAttributes_1.TypeAttributeKind {
+export class MinMaxConstraintTypeAttributeKind extends TypeAttributeKind {
     constructor(name, _typeKinds, _minSchemaProperty, _maxSchemaProperty) {
         super(name);
         this._typeKinds = _typeKinds;
@@ -25,7 +22,7 @@ class MinMaxConstraintTypeAttributeKind extends TypeAttributes_1.TypeAttributeKi
         return true;
     }
     combine(arr) {
-        (0, Support_1.assert)(arr.length > 0);
+        assert(arr.length > 0);
         let [min, max] = arr[0];
         for (let i = 1; i < arr.length; i++) {
             const [otherMin, otherMax] = arr[i];
@@ -45,7 +42,7 @@ class MinMaxConstraintTypeAttributeKind extends TypeAttributes_1.TypeAttributeKi
         return checkMinMaxConstraint([min, max]);
     }
     intersect(arr) {
-        (0, Support_1.assert)(arr.length > 0);
+        assert(arr.length > 0);
         let [min, max] = arr[0];
         for (let i = 1; i < arr.length; i++) {
             const [otherMin, otherMax] = arr[i];
@@ -82,9 +79,8 @@ class MinMaxConstraintTypeAttributeKind extends TypeAttributes_1.TypeAttributeKi
         return `${min}-${max}`;
     }
 }
-exports.MinMaxConstraintTypeAttributeKind = MinMaxConstraintTypeAttributeKind;
-exports.minMaxTypeAttributeKind = new MinMaxConstraintTypeAttributeKind("minMax", new Set(["integer", "double"]), "minimum", "maximum");
-exports.minMaxLengthTypeAttributeKind = new MinMaxConstraintTypeAttributeKind("minMaxLength", new Set(["string"]), "minLength", "maxLength");
+export const minMaxTypeAttributeKind = new MinMaxConstraintTypeAttributeKind("minMax", new Set(["integer", "double"]), "minimum", "maximum");
+export const minMaxLengthTypeAttributeKind = new MinMaxConstraintTypeAttributeKind("minMaxLength", new Set(["string"]), "minLength", "maxLength");
 function producer(schema, minProperty, maxProperty) {
     if (!(typeof schema === "object"))
         return undefined;
@@ -100,33 +96,29 @@ function producer(schema, minProperty, maxProperty) {
         return undefined;
     return [min, max];
 }
-function minMaxAttributeProducer(schema, _ref, types) {
+export function minMaxAttributeProducer(schema, _ref, types) {
     if (!types.has("number") && !types.has("integer"))
         return undefined;
     const maybeMinMax = producer(schema, "minimum", "maximum");
     if (maybeMinMax === undefined)
         return undefined;
-    return { forNumber: exports.minMaxTypeAttributeKind.makeAttributes(maybeMinMax) };
+    return { forNumber: minMaxTypeAttributeKind.makeAttributes(maybeMinMax) };
 }
-exports.minMaxAttributeProducer = minMaxAttributeProducer;
-function minMaxLengthAttributeProducer(schema, _ref, types) {
+export function minMaxLengthAttributeProducer(schema, _ref, types) {
     if (!types.has("string"))
         return undefined;
     const maybeMinMaxLength = producer(schema, "minLength", "maxLength");
     if (maybeMinMaxLength === undefined)
         return undefined;
-    return { forString: exports.minMaxLengthTypeAttributeKind.makeAttributes(maybeMinMaxLength) };
+    return { forString: minMaxLengthTypeAttributeKind.makeAttributes(maybeMinMaxLength) };
 }
-exports.minMaxLengthAttributeProducer = minMaxLengthAttributeProducer;
-function minMaxValueForType(t) {
-    return exports.minMaxTypeAttributeKind.tryGetInAttributes(t.getAttributes());
+export function minMaxValueForType(t) {
+    return minMaxTypeAttributeKind.tryGetInAttributes(t.getAttributes());
 }
-exports.minMaxValueForType = minMaxValueForType;
-function minMaxLengthForType(t) {
-    return exports.minMaxLengthTypeAttributeKind.tryGetInAttributes(t.getAttributes());
+export function minMaxLengthForType(t) {
+    return minMaxLengthTypeAttributeKind.tryGetInAttributes(t.getAttributes());
 }
-exports.minMaxLengthForType = minMaxLengthForType;
-class PatternTypeAttributeKind extends TypeAttributes_1.TypeAttributeKind {
+export class PatternTypeAttributeKind extends TypeAttributeKind {
     constructor() {
         super("pattern");
     }
@@ -134,7 +126,7 @@ class PatternTypeAttributeKind extends TypeAttributes_1.TypeAttributeKind {
         return true;
     }
     combine(arr) {
-        (0, Support_1.assert)(arr.length > 0);
+        assert(arr.length > 0);
         return arr.map(p => `(${p})`).join("|");
     }
     intersect(_arr) {
@@ -150,9 +142,8 @@ class PatternTypeAttributeKind extends TypeAttributes_1.TypeAttributeKind {
         schema.pattern = attr;
     }
 }
-exports.PatternTypeAttributeKind = PatternTypeAttributeKind;
-exports.patternTypeAttributeKind = new PatternTypeAttributeKind();
-function patternAttributeProducer(schema, _ref, types) {
+export const patternTypeAttributeKind = new PatternTypeAttributeKind();
+export function patternAttributeProducer(schema, _ref, types) {
     if (!(typeof schema === "object"))
         return undefined;
     if (!types.has("string"))
@@ -160,10 +151,8 @@ function patternAttributeProducer(schema, _ref, types) {
     const patt = schema.pattern;
     if (typeof patt !== "string")
         return undefined;
-    return { forString: exports.patternTypeAttributeKind.makeAttributes(patt) };
+    return { forString: patternTypeAttributeKind.makeAttributes(patt) };
 }
-exports.patternAttributeProducer = patternAttributeProducer;
-function patternForType(t) {
-    return exports.patternTypeAttributeKind.tryGetInAttributes(t.getAttributes());
+export function patternForType(t) {
+    return patternTypeAttributeKind.tryGetInAttributes(t.getAttributes());
 }
-exports.patternForType = patternForType;

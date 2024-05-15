@@ -1,6 +1,3 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.messageAssert = exports.messageError = exports.QuickTypeError = void 0;
 const errorMessages = {
     InternalError: "Internal error: ${message}",
     // Misc
@@ -65,7 +62,7 @@ const errorMessages = {
     // TypeScript input
     TypeScriptCompilerError: "TypeScript error: ${message}"
 };
-class QuickTypeError extends Error {
+export class QuickTypeError extends Error {
     constructor(errorMessage, messageName, userMessage, properties) {
         super(userMessage);
         this.errorMessage = errorMessage;
@@ -74,8 +71,7 @@ class QuickTypeError extends Error {
         this.properties = properties;
     }
 }
-exports.QuickTypeError = QuickTypeError;
-function messageError(kind, properties) {
+export function messageError(kind, properties) {
     const message = errorMessages[kind];
     let userMessage = message;
     const propertiesMap = properties;
@@ -94,10 +90,8 @@ function messageError(kind, properties) {
     }
     throw new QuickTypeError(message, kind, userMessage, propertiesMap);
 }
-exports.messageError = messageError;
-function messageAssert(assertion, kind, properties) {
+export function messageAssert(assertion, kind, properties) {
     if (assertion)
         return;
     return messageError(kind, properties);
 }
-exports.messageAssert = messageAssert;

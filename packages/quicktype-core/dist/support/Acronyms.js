@@ -1,10 +1,7 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.acronymStyle = exports.acronymOption = exports.AcronymStyleOptions = exports.acronyms = void 0;
-const RendererOptions_1 = require("../RendererOptions");
+import { EnumOption } from "../RendererOptions";
 // eslint-disable-next-line import/no-cycle
-const Strings_1 = require("./Strings");
-exports.acronyms = [
+import { allLowerWordStyle, allUpperWordStyle, firstUpperWordStyle, originalWord } from "./Strings";
+export const acronyms = [
     "aaa",
     "aabb",
     "aac",
@@ -1101,29 +1098,27 @@ exports.acronyms = [
     "zope",
     "zpl"
 ];
-var AcronymStyleOptions;
+export var AcronymStyleOptions;
 (function (AcronymStyleOptions) {
     AcronymStyleOptions["Camel"] = "camel";
     AcronymStyleOptions["Lower"] = "lowerCase";
     AcronymStyleOptions["Original"] = "original";
     AcronymStyleOptions["Pascal"] = "pascal";
-})(AcronymStyleOptions = exports.AcronymStyleOptions || (exports.AcronymStyleOptions = {}));
-const acronymOption = function (defaultOption) {
-    return new RendererOptions_1.EnumOption("acronym-style", "Acronym naming style", [
+})(AcronymStyleOptions || (AcronymStyleOptions = {}));
+export const acronymOption = function (defaultOption) {
+    return new EnumOption("acronym-style", "Acronym naming style", [
         [AcronymStyleOptions.Original, AcronymStyleOptions.Original],
         [AcronymStyleOptions.Pascal, AcronymStyleOptions.Pascal],
         [AcronymStyleOptions.Camel, AcronymStyleOptions.Camel],
         [AcronymStyleOptions.Lower, AcronymStyleOptions.Lower]
     ], defaultOption, "secondary");
 };
-exports.acronymOption = acronymOption;
-function acronymStyle(style) {
+export function acronymStyle(style) {
     const options = {
-        [AcronymStyleOptions.Pascal]: Strings_1.allUpperWordStyle,
-        [AcronymStyleOptions.Camel]: Strings_1.firstUpperWordStyle,
-        [AcronymStyleOptions.Original]: Strings_1.originalWord,
-        [AcronymStyleOptions.Lower]: Strings_1.allLowerWordStyle
+        [AcronymStyleOptions.Pascal]: allUpperWordStyle,
+        [AcronymStyleOptions.Camel]: firstUpperWordStyle,
+        [AcronymStyleOptions.Original]: originalWord,
+        [AcronymStyleOptions.Lower]: allLowerWordStyle
     };
     return options[style];
 }
-exports.acronymStyle = acronymStyle;

@@ -1,16 +1,13 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.UnionBuilder = exports.TypeRefUnionAccumulator = exports.UnionAccumulator = void 0;
-const collection_utils_1 = require("collection-utils");
-const StringTypes_1 = require("./attributes/StringTypes");
-const TypeAttributes_1 = require("./attributes/TypeAttributes");
-const Support_1 = require("./support/Support");
-const Type_1 = require("./Type");
-const TypeUtils_1 = require("./TypeUtils");
+import { mapMap, mapMerge, mapUpdateInto, setUnionInto } from "collection-utils";
+import { StringTypes, stringTypesTypeAttributeKind } from "./attributes/StringTypes";
+import { combineTypeAttributes, emptyTypeAttributes, increaseTypeAttributesDistance, makeTypeAttributesInferred } from "./attributes/TypeAttributes";
+import { assert, assertNever, defined, panic } from "./support/Support";
+import { UnionType, isPrimitiveTypeKind } from "./Type";
+import { matchTypeExhaustive } from "./TypeUtils";
 function addAttributes(accumulatorAttributes, newAttributes) {
     if (accumulatorAttributes === undefined)
         return newAttributes;
-    return (0, TypeAttributes_1.combineTypeAttributes)("union", accumulatorAttributes, newAttributes);
+    return combineTypeAttributes("union", accumulatorAttributes, newAttributes);
 }
 function setAttributes(attributeMap, kind, newAttributes) {
     attributeMap.set(kind, addAttributes(attributeMap.get(kind), newAttributes));
@@ -24,14 +21,14 @@ function addAttributesToBuilder(builder, kind, newAttributes) {
     arr.push(newAttributes);
 }
 function buildTypeAttributeMap(builder) {
-    return (0, collection_utils_1.mapMap)(builder, arr => (0, TypeAttributes_1.combineTypeAttributes)("union", arr));
+    return mapMap(builder, arr => combineTypeAttributes("union", arr));
 }
 function moveAttributes(map, fromKind, toKind) {
-    const fromAttributes = (0, Support_1.defined)(map.get(fromKind));
+    const fromAttributes = defined(map.get(fromKind));
     map.delete(fromKind);
     setAttributes(map, toKind, fromAttributes);
 }
-class UnionAccumulator {
+export class UnionAccumulator {
     constructor(_conflateNumbers) {
         this._conflateNumbers = _conflateNumbers;
         this._nonStringTypeAttributes = new Map();
@@ -55,24 +52,24 @@ class UnionAccumulator {
         this._lostTypeAttributes = true;
     }
     addPrimitive(kind, attributes) {
-        (0, Support_1.assert)(kind !== "any", "any must be added with addAny");
+        assert(kind !== "any", "any must be added with addAny");
         addAttributesToBuilder(this._nonStringTypeAttributes, kind, attributes);
     }
     addFullStringType(attributes, stringTypes) {
         let stringTypesAttributes = undefined;
         if (stringTypes === undefined) {
-            stringTypes = StringTypes_1.stringTypesTypeAttributeKind.tryGetInAttributes(attributes);
+            stringTypes = stringTypesTypeAttributeKind.tryGetInAttributes(attributes);
         }
         else {
-            stringTypesAttributes = StringTypes_1.stringTypesTypeAttributeKind.makeAttributes(stringTypes);
+            stringTypesAttributes = stringTypesTypeAttributeKind.makeAttributes(stringTypes);
         }
         if (stringTypes === undefined) {
-            stringTypes = StringTypes_1.StringTypes.unrestricted;
-            stringTypesAttributes = StringTypes_1.stringTypesTypeAttributeKind.makeAttributes(stringTypes);
+            stringTypes = StringTypes.unrestricted;
+            stringTypesAttributes = stringTypesTypeAttributeKind.makeAttributes(stringTypes);
         }
         const maybeEnumAttributes = this._nonStringTypeAttributes.get("enum");
         if (stringTypes.isRestricted) {
-            (0, Support_1.assert)(maybeEnumAttributes === undefined, "We can't add both an enum as well as a restricted string type to a union builder");
+            assert(maybeEnumAttributes === undefined, "We can't add both an enum as well as a restricted string type to a union builder");
         }
         addAttributesToBuilder(this._stringTypeAttributes, "string", attributes);
         if (stringTypesAttributes !== undefined) {
@@ -86,7 +83,7 @@ class UnionAccumulator {
         }
         addAttributesToBuilder(this._stringTypeAttributes, kind, attributes);
         if (stringTypes !== undefined) {
-            addAttributesToBuilder(this._stringTypeAttributes, kind, StringTypes_1.stringTypesTypeAttributeKind.makeAttributes(stringTypes));
+            addAttributesToBuilder(this._stringTypeAttributes, kind, stringTypesTypeAttributeKind.makeAttributes(stringTypes));
         }
     }
     addArray(t, attributes) {
@@ -104,26 +101,26 @@ class UnionAccumulator {
             return;
         }
         addAttributesToBuilder(this._nonStringTypeAttributes, "enum", attributes);
-        (0, collection_utils_1.setUnionInto)(this._enumCases, cases);
+        setUnionInto(this._enumCases, cases);
     }
     addStringCases(cases, attributes) {
-        this.addFullStringType(attributes, StringTypes_1.StringTypes.fromCases(cases));
+        this.addFullStringType(attributes, StringTypes.fromCases(cases));
     }
     addStringCase(s, count, attributes) {
-        this.addFullStringType(attributes, StringTypes_1.StringTypes.fromCase(s, count));
+        this.addFullStringType(attributes, StringTypes.fromCase(s, count));
     }
     get enumCases() {
         return this._enumCases;
     }
     getMemberKinds() {
-        (0, Support_1.assert)(!(this.have("enum") && this.have("string")), "We can't have both strings and enums in the same union");
-        let merged = (0, collection_utils_1.mapMerge)(buildTypeAttributeMap(this._nonStringTypeAttributes), buildTypeAttributeMap(this._stringTypeAttributes));
+        assert(!(this.have("enum") && this.have("string")), "We can't have both strings and enums in the same union");
+        let merged = mapMerge(buildTypeAttributeMap(this._nonStringTypeAttributes), buildTypeAttributeMap(this._stringTypeAttributes));
         if (merged.size === 0) {
-            return new Map([["none", TypeAttributes_1.emptyTypeAttributes]]);
+            return new Map([["none", emptyTypeAttributes]]);
         }
         if (this._nonStringTypeAttributes.has("any")) {
-            (0, Support_1.assert)(this._lostTypeAttributes, "This had to be set when we added 'any'");
-            const allAttributes = (0, TypeAttributes_1.combineTypeAttributes)("union", Array.from(merged.values()));
+            assert(this._lostTypeAttributes, "This had to be set when we added 'any'");
+            const allAttributes = combineTypeAttributes("union", Array.from(merged.values()));
             return new Map([["any", allAttributes]]);
         }
         if (this._conflateNumbers && this.have("integer") && this.have("double")) {
@@ -138,10 +135,9 @@ class UnionAccumulator {
         return this._lostTypeAttributes;
     }
 }
-exports.UnionAccumulator = UnionAccumulator;
 class FauxUnion {
     getAttributes() {
-        return TypeAttributes_1.emptyTypeAttributes;
+        return emptyTypeAttributes;
     }
 }
 function attributesForTypes(types) {
@@ -156,7 +152,7 @@ function attributesForTypes(types) {
     // is given, this will be empty.
     let unionsEquivalentToRoot = new Set();
     function traverse(t, path, isEquivalentToRoot) {
-        if (t instanceof Type_1.UnionType) {
+        if (t instanceof UnionType) {
             unions.add(t);
             if (isEquivalentToRoot) {
                 unionsEquivalentToRoot = unionsEquivalentToRoot.add(t);
@@ -169,9 +165,9 @@ function attributesForTypes(types) {
             path.pop();
         }
         else {
-            (0, collection_utils_1.mapUpdateInto)(unionsForType, t, s => (s === undefined ? new Set(path) : (0, collection_utils_1.setUnionInto)(s, path)));
+            mapUpdateInto(unionsForType, t, s => (s === undefined ? new Set(path) : setUnionInto(s, path)));
             for (const u of path) {
-                (0, collection_utils_1.mapUpdateInto)(typesForUnion, u, s => (s === undefined ? new Set([t]) : s.add(t)));
+                mapUpdateInto(typesForUnion, u, s => (s === undefined ? new Set([t]) : s.add(t)));
             }
         }
     }
@@ -180,36 +176,36 @@ function attributesForTypes(types) {
     for (const t of typesArray) {
         traverse(t, rootPath, typesArray.length === 1);
     }
-    const resultAttributes = (0, collection_utils_1.mapMap)(unionsForType, (unionForType, t) => {
-        const singleAncestors = Array.from(unionForType).filter(u => (0, Support_1.defined)(typesForUnion.get(u)).size === 1);
-        (0, Support_1.assert)(singleAncestors.every(u => (0, Support_1.defined)(typesForUnion.get(u)).has(t)), "We messed up bookkeeping");
+    const resultAttributes = mapMap(unionsForType, (unionForType, t) => {
+        const singleAncestors = Array.from(unionForType).filter(u => defined(typesForUnion.get(u)).size === 1);
+        assert(singleAncestors.every(u => defined(typesForUnion.get(u)).has(t)), "We messed up bookkeeping");
         const inheritedAttributes = singleAncestors.map(u => u.getAttributes());
-        return (0, TypeAttributes_1.combineTypeAttributes)("union", [t.getAttributes()].concat(inheritedAttributes));
+        return combineTypeAttributes("union", [t.getAttributes()].concat(inheritedAttributes));
     });
     const unionAttributes = Array.from(unions).map(u => {
         const t = typesForUnion.get(u);
         if (t !== undefined && t.size === 1) {
-            return TypeAttributes_1.emptyTypeAttributes;
+            return emptyTypeAttributes;
         }
         const attributes = u.getAttributes();
         if (unionsEquivalentToRoot.has(u)) {
             return attributes;
         }
-        return (0, TypeAttributes_1.makeTypeAttributesInferred)(attributes);
+        return makeTypeAttributesInferred(attributes);
     });
-    return [resultAttributes, (0, TypeAttributes_1.combineTypeAttributes)("union", unionAttributes)];
+    return [resultAttributes, combineTypeAttributes("union", unionAttributes)];
 }
 // FIXME: Move this to UnifyClasses.ts?
-class TypeRefUnionAccumulator extends UnionAccumulator {
+export class TypeRefUnionAccumulator extends UnionAccumulator {
     // There is a method analogous to this in the IntersectionAccumulator.  It might
     // make sense to find a common interface.
     addType(t, attributes) {
-        (0, TypeUtils_1.matchTypeExhaustive)(t, _noneType => this.addNone(attributes), _anyType => this.addAny(attributes), _nullType => this.addPrimitive("null", attributes), _boolType => this.addPrimitive("bool", attributes), _integerType => this.addPrimitive("integer", attributes), _doubleType => this.addPrimitive("double", attributes), _stringType => this.addStringType("string", attributes), arrayType => this.addArray(arrayType.items.typeRef, attributes), classType => this.addObject(classType.typeRef, attributes), mapType => this.addObject(mapType.typeRef, attributes), objectType => this.addObject(objectType.typeRef, attributes), 
+        matchTypeExhaustive(t, _noneType => this.addNone(attributes), _anyType => this.addAny(attributes), _nullType => this.addPrimitive("null", attributes), _boolType => this.addPrimitive("bool", attributes), _integerType => this.addPrimitive("integer", attributes), _doubleType => this.addPrimitive("double", attributes), _stringType => this.addStringType("string", attributes), arrayType => this.addArray(arrayType.items.typeRef, attributes), classType => this.addObject(classType.typeRef, attributes), mapType => this.addObject(mapType.typeRef, attributes), objectType => this.addObject(objectType.typeRef, attributes), 
         // FIXME: We're not carrying counts, so this is not correct if we do enum
         // inference.  JSON Schema input uses this case, however, without enum
         // inference, which is fine, but still a bit ugly.
         enumType => this.addEnum(enumType.cases, attributes), _unionType => {
-            return (0, Support_1.panic)("The unions should have been eliminated in attributesForTypesInUnion");
+            return panic("The unions should have been eliminated in attributesForTypesInUnion");
         }, transformedStringType => this.addStringType(transformedStringType.kind, attributes));
     }
     addTypes(types) {
@@ -220,8 +216,7 @@ class TypeRefUnionAccumulator extends UnionAccumulator {
         return unionAttributes;
     }
 }
-exports.TypeRefUnionAccumulator = TypeRefUnionAccumulator;
-class UnionBuilder {
+export class UnionBuilder {
     constructor(typeBuilder) {
         this.typeBuilder = typeBuilder;
     }
@@ -236,13 +231,13 @@ class UnionBuilder {
             case "array":
                 return this.makeArray(typeProvider.arrayData, typeAttributes, forwardingRef);
             default:
-                if ((0, Type_1.isPrimitiveTypeKind)(kind)) {
+                if (isPrimitiveTypeKind(kind)) {
                     return this.typeBuilder.getPrimitiveType(kind, typeAttributes, forwardingRef);
                 }
                 if (kind === "union" || kind === "class" || kind === "map" || kind === "intersection") {
-                    return (0, Support_1.panic)(`getMemberKinds() shouldn't return ${kind}`);
+                    return panic(`getMemberKinds() shouldn't return ${kind}`);
                 }
-                return (0, Support_1.assertNever)(kind);
+                return assertNever(kind);
         }
     }
     buildUnion(typeProvider, unique, typeAttributes, forwardingRef) {
@@ -256,7 +251,7 @@ class UnionBuilder {
         // right now, it's just a very bad way of surfacing that error.
         if (kinds.size === 1) {
             const [[kind, memberAttributes]] = Array.from(kinds);
-            const allAttributes = (0, TypeAttributes_1.combineTypeAttributes)("union", typeAttributes, (0, TypeAttributes_1.increaseTypeAttributesDistance)(memberAttributes));
+            const allAttributes = combineTypeAttributes("union", typeAttributes, increaseTypeAttributesDistance(memberAttributes));
             const t = this.makeTypeOfKind(typeProvider, kind, allAttributes, forwardingRef);
             return t;
         }
@@ -277,4 +272,3 @@ class UnionBuilder {
         }
     }
 }
-exports.UnionBuilder = UnionBuilder;
