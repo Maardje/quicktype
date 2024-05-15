@@ -1,0 +1,97 @@
+import { ConvenienceRenderer, type ForbiddenWordsInfo } from "../ConvenienceRenderer";
+import { type DateTimeRecognizer } from "../DateTime";
+import { type Name, type Namer } from "../Naming";
+import { type ForEachPosition, type RenderContext } from "../Renderer";
+import { BooleanOption, EnumOption, type Option, type OptionValues, StringOption } from "../RendererOptions";
+import { type Sourcelike } from "../Source";
+import { AcronymStyleOptions } from "../support/Acronyms";
+import { TargetLanguage } from "../TargetLanguage";
+import { type ClassProperty, type ClassType, EnumType, type Type, type TypeKind, type UnionType } from "../Type";
+import { type StringTypeMapping } from "../TypeBuilder";
+import { type FixMeOptionsAnyType, type FixMeOptionsType } from "../types";
+export declare const swiftOptions: {
+    justTypes: BooleanOption;
+    convenienceInitializers: BooleanOption;
+    explicitCodingKeys: BooleanOption;
+    codingKeysProtocol: StringOption;
+    alamofire: BooleanOption;
+    namedTypePrefix: StringOption;
+    useClasses: EnumOption<boolean>;
+    mutableProperties: BooleanOption;
+    acronymStyle: EnumOption<AcronymStyleOptions>;
+    dense: EnumOption<boolean>;
+    linux: BooleanOption;
+    objcSupport: BooleanOption;
+    optionalEnums: BooleanOption;
+    swift5Support: BooleanOption;
+    sendable: BooleanOption;
+    multiFileOutput: BooleanOption;
+    accessLevel: EnumOption<string>;
+    protocol: EnumOption<{
+        equatable: boolean;
+        hashable: boolean;
+    }>;
+};
+export interface SwiftProperty {
+    jsonName: string;
+    name: Name;
+    parameter: ClassProperty;
+    position: ForEachPosition;
+}
+export declare class SwiftTargetLanguage extends TargetLanguage {
+    constructor();
+    protected getOptions(): Array<Option<FixMeOptionsAnyType>>;
+    get stringTypeMapping(): StringTypeMapping;
+    get supportsOptionalClassProperties(): boolean;
+    get supportsUnionsWithBothNumberTypes(): boolean;
+    protected makeRenderer(renderContext: RenderContext, untypedOptionValues: FixMeOptionsType): SwiftRenderer;
+    get dateTimeRecognizer(): DateTimeRecognizer;
+}
+export declare class SwiftRenderer extends ConvenienceRenderer {
+    private readonly _options;
+    private _currentFilename;
+    private _needAny;
+    private _needNull;
+    constructor(targetLanguage: TargetLanguage, renderContext: RenderContext, _options: OptionValues<typeof swiftOptions>);
+    protected forbiddenNamesForGlobalNamespace(): string[];
+    protected forbiddenForObjectProperties(_c: ClassType, _classNamed: Name): ForbiddenWordsInfo;
+    protected forbiddenForEnumCases(_e: EnumType, _enumName: Name): ForbiddenWordsInfo;
+    protected forbiddenForUnionMembers(_u: UnionType, _unionName: Name): ForbiddenWordsInfo;
+    protected makeNamedTypeNamer(): Namer;
+    protected namerForObjectProperty(): Namer;
+    protected makeUnionMemberNamer(): Namer;
+    protected makeEnumCaseNamer(): Namer;
+    protected isImplicitCycleBreaker(t: Type): boolean;
+    protected emitDescriptionBlock(lines: Sourcelike[]): void;
+    private emitBlock;
+    private emitBlockWithAccess;
+    private justTypesCase;
+    private get lowerNamingFunction();
+    protected swiftPropertyType(p: ClassProperty): Sourcelike;
+    protected swiftType(t: Type, withIssues?: boolean, noOptional?: boolean): Sourcelike;
+    protected proposedUnionMemberNameForTypeKind(kind: TypeKind): string | null;
+    private renderSingleFileHeaderComments;
+    private renderHeader;
+    private renderTopLevelAlias;
+    protected getProtocolsArray(kind: "struct" | "class" | "enum"): string[];
+    private getProtocolString;
+    private getEnumPropertyGroups;
+    private get accessLevel();
+    private get objcMembersDeclaration();
+    protected startFile(basename: Sourcelike): void;
+    protected endFile(): void;
+    protected propertyLinesDefinition(name: Name, parameter: ClassProperty): Sourcelike;
+    private renderClassDefinition;
+    protected initializableProperties(c: ClassType): SwiftProperty[];
+    private emitNewEncoderDecoder;
+    private emitConvenienceInitializersExtension;
+    private renderEnumDefinition;
+    private renderUnionDefinition;
+    private emitTopLevelMapAndArrayConvenienceInitializerExtensions;
+    private emitDecodingError;
+    private readonly emitSupportFunctions4;
+    private emitConvenienceMutator;
+    protected emitMark(line: Sourcelike, horizontalLine?: boolean): void;
+    protected emitSourceStructure(): void;
+    private emitAlamofireExtension;
+}
