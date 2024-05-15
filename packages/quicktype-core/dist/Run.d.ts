@@ -35,7 +35,7 @@ export declare const inferenceFlagsObject: {
         description: string;
         negationDescription: string;
         explanation: string;
-        stringType: "time" | "date" | "date-time" | "uuid" | "uri" | "integer-string" | "bool-string";
+        stringType: "date" | "time" | "date-time" | "uuid" | "uri" | "integer-string" | "bool-string";
         order: number;
     };
     /** Whether to assume that JSON strings that look like dates are dates */
@@ -43,7 +43,7 @@ export declare const inferenceFlagsObject: {
         description: string;
         negationDescription: string;
         explanation: string;
-        stringType: "time" | "date" | "date-time" | "uuid" | "uri" | "integer-string" | "bool-string";
+        stringType: "date" | "time" | "date-time" | "uuid" | "uri" | "integer-string" | "bool-string";
         order: number;
     };
     /** Whether to convert stringified integers to integers */
@@ -51,7 +51,7 @@ export declare const inferenceFlagsObject: {
         description: string;
         negationDescription: string;
         explanation: string;
-        stringType: "time" | "date" | "date-time" | "uuid" | "uri" | "integer-string" | "bool-string";
+        stringType: "date" | "time" | "date-time" | "uuid" | "uri" | "integer-string" | "bool-string";
         order: number;
     };
     /** Whether to convert stringified booleans to boolean values */
@@ -59,7 +59,7 @@ export declare const inferenceFlagsObject: {
         description: string;
         negationDescription: string;
         explanation: string;
-        stringType: "time" | "date" | "date-time" | "uuid" | "uri" | "integer-string" | "bool-string";
+        stringType: "date" | "time" | "date-time" | "uuid" | "uri" | "integer-string" | "bool-string";
         order: number;
     };
     /** Combine similar classes.  This doesn't apply to classes from a schema, only from inference. */

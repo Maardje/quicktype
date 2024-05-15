@@ -55,7 +55,7 @@ export type PrimitiveTypeKind = PrimitiveNonStringTypeKind | PrimitiveStringType
 export type NamedTypeKind = "class" | "enum" | "union";
 export type TypeKind = PrimitiveTypeKind | NamedTypeKind | "array" | "object" | "map" | "intersection";
 export type ObjectTypeKind = "object" | "map" | "class";
-export declare const transformedStringTypeKinds: ReadonlySet<"time" | "date" | "date-time" | "uuid" | "uri" | "integer-string" | "bool-string">;
+export declare const transformedStringTypeKinds: ReadonlySet<"date" | "time" | "date-time" | "uuid" | "uri" | "integer-string" | "bool-string">;
 export declare function isPrimitiveStringTypeKind(kind: string): kind is PrimitiveStringTypeKind;
 export declare function targetTypeKindForTransformedStringTypeKind(kind: PrimitiveStringTypeKind): PrimitiveNonStringTypeKind | undefined;
 export declare function isNumberTypeKind(kind: TypeKind): kind is "integer" | "double";

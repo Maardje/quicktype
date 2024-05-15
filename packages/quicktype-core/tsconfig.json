@@ -1,9 +1,10 @@
 {
     "compilerOptions": {
-        "target": "es6",
-        "module": "commonjs",
-        "lib": ["es6", "esnext.asynciterable"],
-        "allowJs": false,
+        "target": "ES2015",
+        "module": "ESNext",
+        "moduleResolution": "node",
+        "lib": ["es6", "esnext.asynciterable", "dom"],
+        "allowJs": true,
         "declaration": true,
         "strict": true,
         "outDir": "dist",
@@ -11,7 +12,8 @@
         "noUnusedParameters": true,
         "noFallthroughCasesInSwitch": true,
         "esModuleInterop": true,
-        "baseUrl": "src"
-    },
-    "include": ["src"]
+        "baseUrl": "src",
+        "skipLibCheck": true,
+        "skipDefaultLibCheck": true
+    }
 }
