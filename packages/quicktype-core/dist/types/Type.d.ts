@@ -25,23 +25,23 @@ export interface TransformedStringTypeTargets {
 declare const transformedStringTypeTargetTypeKinds: {
     date: {
         jsonSchema: string;
-        primitive: undefined;
+        primitive: any;
     };
     time: {
         jsonSchema: string;
-        primitive: undefined;
+        primitive: any;
     };
     "date-time": {
         jsonSchema: string;
-        primitive: undefined;
+        primitive: any;
     };
     uuid: {
         jsonSchema: string;
-        primitive: undefined;
+        primitive: any;
     };
     uri: {
         jsonSchema: string;
-        primitive: undefined;
+        primitive: any;
         attributesProducer: typeof uriInferenceAttributesProducer;
     };
     "integer-string": TransformedStringTypeTargets;
@@ -108,7 +108,7 @@ export declare function arrayTypeIdentity(attributes: TypeAttributes, itemsRef: 
 export declare class ArrayType extends Type {
     private _itemsRef?;
     readonly kind = "array";
-    constructor(typeRef: TypeRef, graph: TypeGraph, _itemsRef?: number | undefined);
+    constructor(typeRef: TypeRef, graph: TypeGraph, _itemsRef?: TypeRef);
     setItems(itemsRef: TypeRef): void;
     private getItemsRef;
     get items(): Type;
@@ -178,7 +178,7 @@ export declare function intersectionTypeIdentity(attributes: TypeAttributes, mem
 export declare abstract class SetOperationType extends Type {
     readonly kind: TypeKind;
     private _memberRefs?;
-    constructor(typeRef: TypeRef, graph: TypeGraph, kind: TypeKind, _memberRefs?: ReadonlySet<number> | undefined);
+    constructor(typeRef: TypeRef, graph: TypeGraph, kind: TypeKind, _memberRefs?: ReadonlySet<TypeRef>);
     setMembers(memberRefs: ReadonlySet<TypeRef>): void;
     protected getMemberRefs(): ReadonlySet<TypeRef>;
     get members(): ReadonlySet<Type>;

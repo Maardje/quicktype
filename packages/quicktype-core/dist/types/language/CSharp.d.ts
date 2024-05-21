@@ -37,7 +37,7 @@ export declare const cSharpOptions: {
         helpers: boolean;
         attributes: boolean;
     }>;
-    baseclass: EnumOption<string | undefined>;
+    baseclass: EnumOption<string>;
     checkRequired: BooleanOption;
     keepPropertyName: BooleanOption;
 };
@@ -100,7 +100,7 @@ export declare const newtonsoftCSharpOptions: {
         helpers: boolean;
         attributes: boolean;
     }>;
-    baseclass: EnumOption<string | undefined>;
+    baseclass: EnumOption<string>;
     checkRequired: BooleanOption;
     keepPropertyName: BooleanOption;
 };
@@ -157,7 +157,7 @@ export declare const systemTextJsonCSharpOptions: {
         helpers: boolean;
         attributes: boolean;
     }>;
-    baseclass: EnumOption<string | undefined>;
+    baseclass: EnumOption<string>;
     checkRequired: BooleanOption;
     keepPropertyName: BooleanOption;
 };

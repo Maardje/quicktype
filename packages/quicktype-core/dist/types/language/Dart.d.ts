@@ -57,8 +57,8 @@ export declare class DartRenderer extends ConvenienceRenderer {
     protected mapList(isNullable: boolean, itemType: Sourcelike, list: Sourcelike, mapper: Sourcelike): Sourcelike;
     protected mapMap(isNullable: boolean, valueType: Sourcelike, map: Sourcelike, valueMapper: Sourcelike): Sourcelike;
     protected mapClass(isNullable: boolean, classType: ClassType, dynamic: Sourcelike): Sourcelike;
-    protected fromDynamicExpression(isNullable: boolean | undefined, t: Type, ...dynamic: Sourcelike[]): Sourcelike;
-    protected toDynamicExpression(isNullable: boolean | undefined, t: Type, ...dynamic: Sourcelike[]): Sourcelike;
+    protected fromDynamicExpression(isNullable: boolean, t: Type, ...dynamic: Sourcelike[]): Sourcelike;
+    protected toDynamicExpression(isNullable: boolean, t: Type, ...dynamic: Sourcelike[]): Sourcelike;
     private _emitEmptyConstructor;
     private _emitConstructor;
     private _emitVariables;

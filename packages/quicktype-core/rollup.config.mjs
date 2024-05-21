@@ -7,6 +7,7 @@ import { globSync } from 'glob';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import terser from '@rollup/plugin-terser';
+import  dts from 'rollup-plugin-dts';
 import nodePolyfills from 'rollup-plugin-polyfill-node';
 
 /** @type {import("rollup").RollupOptions[]} */
@@ -15,21 +16,10 @@ export default [
     input: 'src/index.ts',
     output: [
       {
-        dir: 'dist',
-        format: 'esm',
-        name: 'quicktype',
-      },
-      {
-        file: 'dist/index.browser.min.js',
-        format: 'iife',
-        name: 'quicktype',
-        plugins:[terser()]
-      },
-      {
         file: 'dist/index.browser.js',
         format: 'iife',
         name: 'quicktype',
-        intro: 'var global = window; var process = {env:{}};'
+        intro: 'var global = window; var process = {env:{}};',
       },
     ],
     plugins: [
@@ -41,8 +31,7 @@ export default [
             allowExportsFolderMapping: true,
             browser: true,
         }),
-        typescript({}),
+        typescript({declaration:true, declarationDir:'types'}),
     ],
   },
-
 ];

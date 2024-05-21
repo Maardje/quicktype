@@ -5,15 +5,6 @@
         "moduleResolution": "node",
         "lib": ["es6", "esnext.asynciterable", "dom"],
         "allowJs": true,
-        "declaration": true,
-        "strict": true,
-        "outDir": "dist",
-        "noUnusedLocals": true,
-        "noUnusedParameters": true,
-        "noFallthroughCasesInSwitch": true,
-        "esModuleInterop": true,
-        "baseUrl": "src",
-        "skipLibCheck": true,
-        "skipDefaultLibCheck": true
-    }
+    },
+    "exclude": ["node_modules", "dist", "./rollup.config.mjs", "./rollup.config.types.mjs"]
 }
